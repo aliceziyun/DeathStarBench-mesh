@@ -100,6 +100,7 @@ TClient * ClientPool<TClient>::Pop() {
       client = _pool.front();
       _pool.pop_front();
     } else {
+      // TODO: delete *_config_json
       client = new TClient(_addr, _port, _keepalive_ms, *_config_json);
       _curr_pool_size++;
     }

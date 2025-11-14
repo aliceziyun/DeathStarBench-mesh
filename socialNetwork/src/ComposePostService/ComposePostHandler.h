@@ -8,17 +8,9 @@
 #include <string>
 #include <vector>
 
-#include "../../gen-cpp/ComposePostService.h"
-#include "../../gen-cpp/HomeTimelineService.h"
-#include "../../gen-cpp/MediaService.h"
-#include "../../gen-cpp/PostStorageService.h"
-#include "../../gen-cpp/TextService.h"
-#include "../../gen-cpp/UniqueIdService.h"
-#include "../../gen-cpp/UserService.h"
-#include "../../gen-cpp/UserTimelineService.h"
-#include "../../gen-cpp/social_network_types.h"
+#include "./social_network_types.h"
 #include "../ClientPool.h"
-#include "../ThriftClient.h"
+#include "../HttpClientWrapper.h"
 #include "../logger.h"
 #include "../tracing.h"
 
@@ -30,13 +22,13 @@ using std::chrono::system_clock;
 
 class ComposePostHandler : public ComposePostServiceIf {
  public:
-  ComposePostHandler(ClientPool<ThriftClient<PostStorageServiceClient>> *,
-                     ClientPool<ThriftClient<UserTimelineServiceClient>> *,
-                     ClientPool<ThriftClient<UserServiceClient>> *,
-                     ClientPool<ThriftClient<UniqueIdServiceClient>> *,
-                     ClientPool<ThriftClient<MediaServiceClient>> *,
-                     ClientPool<ThriftClient<TextServiceClient>> *,
-                     ClientPool<ThriftClient<HomeTimelineServiceClient>> *);
+  ComposePostHandler(ClientPool<HttpClientWrapper> *,
+                     ClientPool<HttpClientWrapper> *,
+                     ClientPool<HttpClientWrapper> *,
+                     ClientPool<HttpClientWrapper> *,
+                     ClientPool<HttpClientWrapper> *,
+                     ClientPool<HttpClientWrapper> *,
+                     ClientPool<HttpClientWrapper> *);
   ~ComposePostHandler() override = default;
 
   void ComposePost(int64_t req_id, const std::string &username, int64_t user_id,
@@ -47,17 +39,14 @@ class ComposePostHandler : public ComposePostServiceIf {
                    const std::map<std::string, std::string> &carrier) override;
 
  private:
-  ClientPool<ThriftClient<PostStorageServiceClient>> *_post_storage_client_pool;
-  ClientPool<ThriftClient<UserTimelineServiceClient>>
-      *_user_timeline_client_pool;
+  ClientPool<HttpClientWrapper> *_post_storage_client_pool;
+  ClientPool<HttpClientWrapper> *_user_timeline_client_pool;
 
-  ClientPool<ThriftClient<UserServiceClient>> *_user_service_client_pool;
-  ClientPool<ThriftClient<UniqueIdServiceClient>>
-      *_unique_id_service_client_pool;
-  ClientPool<ThriftClient<MediaServiceClient>> *_media_service_client_pool;
-  ClientPool<ThriftClient<TextServiceClient>> *_text_service_client_pool;
-  ClientPool<ThriftClient<HomeTimelineServiceClient>>
-      *_home_timeline_client_pool;
+  ClientPool<HttpClientWrapper> *_user_service_client_pool;
+  ClientPool<HttpClientWrapper> *_unique_id_service_client_pool;
+  ClientPool<HttpClientWrapper> *_media_service_client_pool;
+  ClientPool<HttpClientWrapper> *_text_service_client_pool;
+  ClientPool<HttpClientWrapper> *_home_timeline_client_pool;
 
   void _UploadUserTimelineHelper(
       int64_t req_id, int64_t post_id, int64_t user_id, int64_t timestamp,
@@ -87,16 +76,16 @@ class ComposePostHandler : public ComposePostServiceIf {
 };
 
 ComposePostHandler::ComposePostHandler(
-    ClientPool<social_network::ThriftClient<PostStorageServiceClient>>
+    ClientPool<HttpClientWrapper>
         *post_storage_client_pool,
-    ClientPool<social_network::ThriftClient<UserTimelineServiceClient>>
+    ClientPool<HttpClientWrapper>
         *user_timeline_client_pool,
-    ClientPool<ThriftClient<UserServiceClient>> *user_service_client_pool,
-    ClientPool<ThriftClient<UniqueIdServiceClient>>
+    ClientPool<HttpClientWrapper> *user_service_client_pool,
+    ClientPool<HttpClientWrapper>
         *unique_id_service_client_pool,
-    ClientPool<ThriftClient<MediaServiceClient>> *media_service_client_pool,
-    ClientPool<ThriftClient<TextServiceClient>> *text_service_client_pool,
-    ClientPool<ThriftClient<HomeTimelineServiceClient>>
+    ClientPool<HttpClientWrapper> *media_service_client_pool,
+    ClientPool<HttpClientWrapper> *text_service_client_pool,
+    ClientPool<HttpClientWrapper>
         *home_timeline_client_pool) {
   _post_storage_client_pool = post_storage_client_pool;
   _user_timeline_client_pool = user_timeline_client_pool;
@@ -131,8 +120,16 @@ Creator ComposePostHandler::_ComposeCreaterHelper(
   auto user_client = user_client_wrapper->GetClient();
   Creator _return_creator;
   try {
-    user_client->ComposeCreatorWithUserId(_return_creator, req_id, user_id,
-                                          username, writer_text_map);
+    nlohmann::json req_json = {
+      {"req_id", req_id},
+      {"user_id", user_id},
+      {"username", username},
+      {"carrier", writer_text_map}
+    };
+
+    auto res = user_client->PostJson("/ComposeCreatorWithUserId", req_json);
+    _return_creator.user_id = res["user_id"];
+    _return_creator.username = res["username"];
   } catch (...) {
     LOG(error) << "Failed to send compose-creator to user-service";
     _user_service_client_pool->Remove(user_client_wrapper);
@@ -169,7 +166,27 @@ TextServiceReturn ComposePostHandler::_ComposeTextHelper(
   auto text_client = text_client_wrapper->GetClient();
   TextServiceReturn _return_text;
   try {
-    text_client->ComposeText(_return_text, req_id, text, writer_text_map);
+    nlohmann::json req_json = {
+      {"req_id", req_id},
+      {"text", text},
+      {"carrier", writer_text_map}
+    };
+
+    auto res = text_client->PostJson("/ComposeText", req_json);
+    _return_text.text = res["text"];
+    for (auto &item : res["user_mentions"]) {
+      UserMention user_mention;
+      user_mention.user_id = item["user_id"];
+      user_mention.username = item["username"];
+      _return_text.user_mentions.emplace_back(user_mention);
+    }
+    for (auto &item : res["urls"]) {
+      Url url;
+      url.url = item["url"];
+      url.display_url = item["display_url"];
+      url.expanded_url = item["expanded_url"];
+      _return_text.urls.emplace_back(url);
+    }
   } catch (...) {
     LOG(error) << "Failed to send compose-text to text-service";
     _text_service_client_pool->Remove(text_client_wrapper);
@@ -207,8 +224,20 @@ std::vector<Media> ComposePostHandler::_ComposeMediaHelper(
   auto media_client = media_client_wrapper->GetClient();
   std::vector<Media> _return_media;
   try {
-    media_client->ComposeMedia(_return_media, req_id, media_types, media_ids,
-                               writer_text_map);
+    nlohmann::json req_json = {
+      {"req_id", req_id},
+      {"media_types", media_types},
+      {"media_ids", media_ids},
+      {"carrier", writer_text_map}
+    };
+
+    auto res = media_client->PostJson("/ComposeMedia", req_json);
+    for (auto &item : res["media"]) {
+      Media media;
+      media.media_id = item["media_id"];
+      media.media_type = item["media_type"];
+      _return_media.emplace_back(media);
+    }
   } catch (...) {
     LOG(error) << "Failed to send compose-media to media-service";
     _media_service_client_pool->Remove(media_client_wrapper);
@@ -279,7 +308,24 @@ void ComposePostHandler::_UploadPostHelper(
   }
   auto post_storage_client = post_storage_client_wrapper->GetClient();
   try {
-    post_storage_client->StorePost(req_id, post, writer_text_map);
+    nlohmann::json req_json = {
+      {"req_id", req_id},
+      {"post", {
+          {"post_id", post.post_id},
+          {"creator", {
+              {"user_id", post.creator.user_id},
+              {"username", post.creator.username}
+          }},
+          {"text", post.text},
+          {"user_mentions", nlohmann::json::array()},
+          {"media", nlohmann::json::array()},
+          {"urls", nlohmann::json::array()},
+          {"timestamp", post.timestamp},
+          {"post_type", static_cast<int>(post.post_type)}
+      }},
+      {"carrier", writer_text_map}
+    };
+    auto res = post_storage_client->PostJson("/StorePost", req_json);
   } catch (...) {
     _post_storage_client_pool->Remove(post_storage_client_wrapper);
     LOG(error) << "Failed to store post to post-storage-service";
@@ -312,8 +358,14 @@ void ComposePostHandler::_UploadUserTimelineHelper(
   }
   auto user_timeline_client = user_timeline_client_wrapper->GetClient();
   try {
-    user_timeline_client->WriteUserTimeline(req_id, post_id, user_id, timestamp,
-                                            writer_text_map);
+    nlohmann::json req_json = {
+      {"req_id", req_id},
+      {"post_id", post_id},
+      {"user_id", user_id},
+      {"timestamp", timestamp},
+      {"carrier", writer_text_map}
+    };
+    user_timeline_client->PostJson("/WriteUserTimeline", req_json);
   } catch (...) {
     _user_timeline_client_pool->Remove(user_timeline_client_wrapper);
     throw;
@@ -346,8 +398,15 @@ void ComposePostHandler::_UploadHomeTimelineHelper(
   }
   auto home_timeline_client = home_timeline_client_wrapper->GetClient();
   try {
-    home_timeline_client->WriteHomeTimeline(req_id, post_id, user_id, timestamp,
-                                            user_mentions_id, writer_text_map);
+    nlohmann::json req_json = {
+      {"req_id", req_id},
+      {"post_id", post_id},
+      {"user_id", user_id},
+      {"timestamp", timestamp},
+      {"user_mentions_id", user_mentions_id},
+      {"carrier", writer_text_map}
+    };
+    home_timeline_client->PostJson("/WriteHomeTimeline", req_json);
   } catch (...) {
     _home_timeline_client_pool->Remove(home_timeline_client_wrapper);
     LOG(error) << "Failed to write home timeline to home-timeline-service";
