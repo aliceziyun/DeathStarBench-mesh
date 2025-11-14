@@ -5,24 +5,24 @@
 #include <iostream>
 #include <string>
 
-#include "../../gen-cpp/MediaService.h"
 #include "../logger.h"
 #include "../tracing.h"
+#include "../social_network_types.h"
 
 // 2018-01-01 00:00:00 UTC
 #define CUSTOM_EPOCH 1514764800000
 
 namespace social_network {
 
-class MediaHandler : public MediaServiceIf {
+class MediaHandler {
  public:
   MediaHandler() = default;
-  ~MediaHandler() override = default;
+  ~MediaHandler() = default;
 
   void ComposeMedia(std::vector<Media> &_return, int64_t,
                     const std::vector<std::string> &,
                     const std::vector<int64_t> &,
-                    const std::map<std::string, std::string> &) override;
+                    const std::map<std::string, std::string> &);
 
  private:
 };
@@ -42,11 +42,9 @@ void MediaHandler::ComposeMedia(
   opentracing::Tracer::Global()->Inject(span->context(), writer);
 
   if (media_types.size() != media_ids.size()) {
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_THRIFT_HANDLER_ERROR;
-    se.message =
-        "The lengths of media_id list and media_type list are not equal";
-    throw se;
+    LOG(error) << "The lengths of media_id list and media_type list are not equal";
+    throw std::runtime_error(
+        "The lengths of media_id list and media_type list are not equal");
   }
 
   for (int i = 0; i < media_ids.size(); ++i) {

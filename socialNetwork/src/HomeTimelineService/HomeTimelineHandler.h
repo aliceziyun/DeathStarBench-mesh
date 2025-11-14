@@ -5,58 +5,58 @@
 
 #include <future>
 #include <iostream>
+#include <nlohmann/json.hpp>
 #include <string>
 
-#include "../../gen-cpp/HomeTimelineService.h"
-#include "../../gen-cpp/PostStorageService.h"
-#include "../../gen-cpp/SocialGraphService.h"
 #include "../ClientPool.h"
-#include "../ThriftClient.h"
+#include "../HttpClientWrapper.h"
 #include "../logger.h"
 #include "../tracing.h"
+#include "../social_network_types.h"
 
 using namespace sw::redis;
 namespace social_network {
-class HomeTimelineHandler : public HomeTimelineServiceIf {
+using json = nlohmann::json;
+
+class HomeTimelineHandler {
  public:
   HomeTimelineHandler(Redis *,
-                      ClientPool<ThriftClient<PostStorageServiceClient>> *,
-                      ClientPool<ThriftClient<SocialGraphServiceClient>> *);
+            ClientPool<HttpClientWrapper> *,
+            ClientPool<HttpClientWrapper> *);
 
 
-  HomeTimelineHandler(Redis *,Redis *,
-      ClientPool<ThriftClient<PostStorageServiceClient>>*,
-      ClientPool<ThriftClient<SocialGraphServiceClient>>*);
+  HomeTimelineHandler(Redis *, Redis *,
+            ClientPool<HttpClientWrapper> *,
+            ClientPool<HttpClientWrapper> *);
 
 
   HomeTimelineHandler(RedisCluster *,
-                      ClientPool<ThriftClient<PostStorageServiceClient>> *,
-                      ClientPool<ThriftClient<SocialGraphServiceClient>> *);
-  ~HomeTimelineHandler() override = default;
+            ClientPool<HttpClientWrapper> *,
+            ClientPool<HttpClientWrapper> *);
+  ~HomeTimelineHandler() = default;
 
   bool IsRedisReplicationEnabled();
 
   void ReadHomeTimeline(std::vector<Post> &, int64_t, int64_t, int, int,
-                        const std::map<std::string, std::string> &) override;
+            const std::map<std::string, std::string> &);
 
   void WriteHomeTimeline(int64_t, int64_t, int64_t, int64_t,
-                         const std::vector<int64_t> &,
-                         const std::map<std::string, std::string> &) override;
+             const std::vector<int64_t> &,
+             const std::map<std::string, std::string> &);
 
  private:
-     Redis *_redis_replica_pool;
-     Redis *_redis_primary_pool;
-     Redis *_redis_client_pool;
-     RedisCluster *_redis_cluster_client_pool;
-     ClientPool<ThriftClient<PostStorageServiceClient>> *_post_client_pool;
-     ClientPool<ThriftClient<SocialGraphServiceClient>> *_social_graph_client_pool;
+  Redis *_redis_replica_pool;
+  Redis *_redis_primary_pool;
+  Redis *_redis_client_pool;
+  RedisCluster *_redis_cluster_client_pool;
+  ClientPool<HttpClientWrapper> *_post_client_pool;
+  ClientPool<HttpClientWrapper> *_social_graph_client_pool;
 };
 
 HomeTimelineHandler::HomeTimelineHandler(
-    Redis *redis_pool,
-    ClientPool<ThriftClient<PostStorageServiceClient>> *post_client_pool,
-    ClientPool<ThriftClient<SocialGraphServiceClient>>
-        *social_graph_client_pool) {
+  Redis *redis_pool,
+  ClientPool<HttpClientWrapper> *post_client_pool,
+  ClientPool<HttpClientWrapper> *social_graph_client_pool) {
     _redis_primary_pool = nullptr;
     _redis_replica_pool = nullptr;
     _redis_client_pool = redis_pool;
@@ -66,10 +66,9 @@ HomeTimelineHandler::HomeTimelineHandler(
 }
 
 HomeTimelineHandler::HomeTimelineHandler(
-    RedisCluster *redis_pool,
-    ClientPool<ThriftClient<PostStorageServiceClient>> *post_client_pool,
-    ClientPool<ThriftClient<SocialGraphServiceClient>>
-        *social_graph_client_pool) {
+  RedisCluster *redis_pool,
+  ClientPool<HttpClientWrapper> *post_client_pool,
+  ClientPool<HttpClientWrapper> *social_graph_client_pool) {
     _redis_primary_pool = nullptr;
     _redis_replica_pool = nullptr;
     _redis_client_pool = nullptr;
@@ -79,11 +78,10 @@ HomeTimelineHandler::HomeTimelineHandler(
 }
 
 HomeTimelineHandler::HomeTimelineHandler(
-    Redis *redis_replica_pool,
-    Redis *redis_primary_pool,
-    ClientPool<ThriftClient<PostStorageServiceClient>>* post_client_pool,
-    ClientPool<ThriftClient<SocialGraphServiceClient>>
-    * social_graph_client_pool) {
+  Redis *redis_replica_pool,
+  Redis *redis_primary_pool,
+  ClientPool<HttpClientWrapper> *post_client_pool,
+  ClientPool<HttpClientWrapper> *social_graph_client_pool) {
     _redis_primary_pool = redis_primary_pool;
     _redis_replica_pool = redis_replica_pool;
     _redis_client_pool = nullptr;
@@ -113,24 +111,27 @@ void HomeTimelineHandler::WriteHomeTimeline(
   TextMapWriter writer(writer_text_map);
   opentracing::Tracer::Global()->Inject(followers_span->context(), writer);
 
-  auto social_graph_client_wrapper = _social_graph_client_pool->Pop();
-  if (!social_graph_client_wrapper) {
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_THRIFT_CONN_ERROR;
-    se.message = "Failed to connect to social-graph-service";
-    throw se;
+  auto social_graph_client = _social_graph_client_pool->Pop();
+  if (!social_graph_client) {
+    LOG(error) << "Failed to connect to social-graph-service";
+    followers_span->Finish();
+    throw std::runtime_error("Failed to connect to social-graph-service");
   }
-  auto social_graph_client = social_graph_client_wrapper->GetClient();
   std::vector<int64_t> followers_id;
   try {
-    social_graph_client->GetFollowers(followers_id, req_id, user_id,
-                                      writer_text_map);
+    json req_json = {
+        {"req_id", req_id},
+        {"user_id", user_id},
+        {"carrier", writer_text_map}};
+    auto res = social_graph_client->PostJson("/GetFollowers", req_json);
+    followers_id = res["followers_id"].get<std::vector<int64_t>>();
   } catch (...) {
-    LOG(error) << "Failed to get followers from social-network-service";
-    _social_graph_client_pool->Remove(social_graph_client_wrapper);
+    LOG(error) << "Failed to get followers from social-graph-service";
+    _social_graph_client_pool->Remove(social_graph_client);
+    followers_span->Finish();
     throw;
   }
-  _social_graph_client_pool->Keepalive(social_graph_client_wrapper);
+  _social_graph_client_pool->Keepalive(social_graph_client);
   followers_span->Finish();
 
   std::set<int64_t> followers_id_set(followers_id.begin(), followers_id.end());
@@ -260,22 +261,52 @@ void HomeTimelineHandler::ReadHomeTimeline(
     post_ids.emplace_back(std::stoul(post_id_str));
   }
 
-  auto post_client_wrapper = _post_client_pool->Pop();
-  if (!post_client_wrapper) {
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_THRIFT_CONN_ERROR;
-    se.message = "Failed to connect to post-storage-service";
-    throw se;
+  auto post_client = _post_client_pool->Pop();
+  if (!post_client) {
+    LOG(error) << "Failed to connect to post-storage-service";
+    throw std::runtime_error("Failed to connect to post-storage-service");
   }
-  auto post_client = post_client_wrapper->GetClient();
   try {
-    post_client->ReadPosts(_return, req_id, post_ids, writer_text_map);
+    json req_json = {
+        {"req_id", req_id},
+        {"post_ids", post_ids},
+        {"carrier", writer_text_map}};
+    auto res = post_client->PostJson("/ReadPosts", req_json);
+    for (auto &item : res["posts"]) {
+      Post p;
+      p.req_id = item["req_id"];
+      p.timestamp = item["timestamp"];
+      p.post_id = item["post_id"];
+      p.creator.user_id = item["creator"]["user_id"];
+      p.creator.username = item["creator"]["username"];
+      p.post_type = static_cast<PostType::type>((int)item["post_type"]);
+      p.text = item["text"];
+      for (auto &m : item["media"]) {
+        Media media;
+        media.media_id = m["media_id"];
+        media.media_type = m["media_type"];
+        p.media.emplace_back(media);
+      }
+      for (auto &um : item["user_mentions"]) {
+        UserMention u;
+        u.user_id = um["user_id"];
+        u.username = um["username"];
+        p.user_mentions.emplace_back(u);
+      }
+      for (auto &u : item["urls"]) {
+        Url url;
+        url.shortened_url = u["shortened_url"];
+        url.expanded_url = u["expanded_url"];
+        p.urls.emplace_back(url);
+      }
+      _return.emplace_back(std::move(p));
+    }
   } catch (...) {
-    _post_client_pool->Remove(post_client_wrapper);
+    _post_client_pool->Remove(post_client);
     LOG(error) << "Failed to read posts from post-storage-service";
     throw;
   }
-  _post_client_pool->Keepalive(post_client_wrapper);
+  _post_client_pool->Keepalive(post_client);
   span->Finish();
 }
 

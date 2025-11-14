@@ -127,7 +127,7 @@ int main(int argc, char *argv[]) {
 
     httplib::Server server;
 
-    server.Post("/compose_post", [&](const httplib::Request& req, httplib::Response& res) {
+    server.Post("/ComposePost", [&](const httplib::Request& req, httplib::Response& res) {
         try {
             auto j = json::parse(req.body);
 

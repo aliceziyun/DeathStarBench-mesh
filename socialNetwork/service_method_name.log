@@ -1,0 +1,10 @@
+ComposePostService: ComposePost
+HomeTimelineService: WriteHomeTimeline, ReadHomeTimeline
+UserService: ComposeCreatorWithUserId, 
+TextService: ComposeText
+MideaService: ComposeMedia
+UniqueIdService: ComposeUniqueId
+PostService: ReadPost
+PostStorageService: StorePost
+UserTimeLineService: WriteUserTimeline
+SocialGraphService: GetFollowers
