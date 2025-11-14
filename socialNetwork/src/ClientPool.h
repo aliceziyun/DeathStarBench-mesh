@@ -18,8 +18,7 @@ template<class TClient>
 class ClientPool {
  public:
   ClientPool(const std::string &client_type, const std::string &addr,
-      int port, int min_size, int max_size, int timeout_ms, int keepalive_ms,
-      const json &config_json);
+      int port, int min_size, int max_size, int timeout_ms, int keepalive_ms);
   ~ClientPool();
 
   ClientPool(const ClientPool&) = delete;
@@ -44,15 +43,12 @@ class ClientPool {
   int _keepalive_ms;
   std::mutex _mtx;
   std::condition_variable _cv;
-  const json *_config_json;
-
 };
 
 template<class TClient>
 ClientPool<TClient>::ClientPool(const std::string &client_type,
     const std::string &addr, int port, int min_pool_size,
-    int max_pool_size, int timeout_ms, int keepalive_ms,
-    const json &config_json) {
+    int max_pool_size, int timeout_ms, int keepalive_ms) {
   _addr = addr;
   _port = port;
   _min_pool_size = min_pool_size;
@@ -60,10 +56,9 @@ ClientPool<TClient>::ClientPool(const std::string &client_type,
   _timeout_ms = timeout_ms;
   _client_type = client_type;
   _keepalive_ms = keepalive_ms;
-  _config_json = &config_json;
 
   for (int i = 0; i < min_pool_size; ++i) {
-    TClient *client = new TClient(addr, port, keepalive_ms, config_json);
+    TClient *client = new TClient(addr, port, keepalive_ms);
     _pool.emplace_back(client);
   }
   _curr_pool_size = min_pool_size;
@@ -100,8 +95,7 @@ TClient * ClientPool<TClient>::Pop() {
       client = _pool.front();
       _pool.pop_front();
     } else {
-      // TODO: delete *_config_json
-      client = new TClient(_addr, _port, _keepalive_ms, *_config_json);
+      client = new TClient(_addr, _port, _keepalive_ms);
       _curr_pool_size++;
     }
   cv_lock.unlock();

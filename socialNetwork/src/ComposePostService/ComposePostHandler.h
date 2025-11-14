@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "./social_network_types.h"
+#include "../social_network_types.h"
 #include "../ClientPool.h"
 #include "../HttpClientWrapper.h"
 #include "../logger.h"
@@ -20,7 +20,7 @@ using std::chrono::duration_cast;
 using std::chrono::milliseconds;
 using std::chrono::system_clock;
 
-class ComposePostHandler : public ComposePostServiceIf {
+class ComposePostHandler {
  public:
   ComposePostHandler(ClientPool<HttpClientWrapper> *,
                      ClientPool<HttpClientWrapper> *,
@@ -29,14 +29,14 @@ class ComposePostHandler : public ComposePostServiceIf {
                      ClientPool<HttpClientWrapper> *,
                      ClientPool<HttpClientWrapper> *,
                      ClientPool<HttpClientWrapper> *);
-  ~ComposePostHandler() override = default;
+  ~ComposePostHandler() = default;
 
   void ComposePost(int64_t req_id, const std::string &username, int64_t user_id,
                    const std::string &text,
                    const std::vector<int64_t> &media_ids,
                    const std::vector<std::string> &media_types,
                    PostType::type post_type,
-                   const std::map<std::string, std::string> &carrier) override;
+                   const std::map<std::string, std::string> &carrier);
 
  private:
   ClientPool<HttpClientWrapper> *_post_storage_client_pool;
@@ -107,17 +107,13 @@ Creator ComposePostHandler::_ComposeCreaterHelper(
   TextMapWriter writer(writer_text_map);
   opentracing::Tracer::Global()->Inject(span->context(), writer);
 
-  auto user_client_wrapper = _user_service_client_pool->Pop();
-  if (!user_client_wrapper) {
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_THRIFT_CONN_ERROR;
-    se.message = "Failed to connect to user-service";
-    LOG(error) << se.message;
+  auto user_client = _user_service_client_pool->Pop();
+  if (!user_client) {
+    LOG(error) << "Failed to connect to user-service";
     span->Finish();
-    throw se;
+    throw std::runtime_error("Failed to connect to user-service");
   }
 
-  auto user_client = user_client_wrapper->GetClient();
   Creator _return_creator;
   try {
     nlohmann::json req_json = {
@@ -132,11 +128,11 @@ Creator ComposePostHandler::_ComposeCreaterHelper(
     _return_creator.username = res["username"];
   } catch (...) {
     LOG(error) << "Failed to send compose-creator to user-service";
-    _user_service_client_pool->Remove(user_client_wrapper);
+    _user_service_client_pool->Remove(user_client);
     span->Finish();
     throw;
   }
-  _user_service_client_pool->Keepalive(user_client_wrapper);
+  _user_service_client_pool->Keepalive(user_client);
   span->Finish();
   return _return_creator;
 }
@@ -152,18 +148,13 @@ TextServiceReturn ComposePostHandler::_ComposeTextHelper(
   TextMapWriter writer(writer_text_map);
   opentracing::Tracer::Global()->Inject(span->context(), writer);
 
-  auto text_client_wrapper = _text_service_client_pool->Pop();
-  if (!text_client_wrapper) {
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_THRIFT_CONN_ERROR;
-    se.message = "Failed to connect to text-service";
-    LOG(error) << se.message;
-    ;
+  auto text_client = _text_service_client_pool->Pop();
+  if (!text_client) {
+    LOG(error) << "Failed to connect to text-service";
     span->Finish();
-    throw se;
+    throw std::runtime_error("Failed to connect to text-service");
   }
 
-  auto text_client = text_client_wrapper->GetClient();
   TextServiceReturn _return_text;
   try {
     nlohmann::json req_json = {
@@ -182,18 +173,17 @@ TextServiceReturn ComposePostHandler::_ComposeTextHelper(
     }
     for (auto &item : res["urls"]) {
       Url url;
-      url.url = item["url"];
-      url.display_url = item["display_url"];
+      url.shortened_url = item["shortened_url"];
       url.expanded_url = item["expanded_url"];
       _return_text.urls.emplace_back(url);
     }
   } catch (...) {
     LOG(error) << "Failed to send compose-text to text-service";
-    _text_service_client_pool->Remove(text_client_wrapper);
+    _text_service_client_pool->Remove(text_client);
     span->Finish();
     throw;
   }
-  _text_service_client_pool->Keepalive(text_client_wrapper);
+  _text_service_client_pool->Keepalive(text_client);
   span->Finish();
   return _return_text;
 }
@@ -210,18 +200,13 @@ std::vector<Media> ComposePostHandler::_ComposeMediaHelper(
   TextMapWriter writer(writer_text_map);
   opentracing::Tracer::Global()->Inject(span->context(), writer);
 
-  auto media_client_wrapper = _media_service_client_pool->Pop();
-  if (!media_client_wrapper) {
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_THRIFT_CONN_ERROR;
-    se.message = "Failed to connect to media-service";
-    LOG(error) << se.message;
-    ;
+  auto media_client = _media_service_client_pool->Pop();
+  if (!media_client) {
+    LOG(error) << "Failed to connect to media-service";
     span->Finish();
-    throw se;
+    throw std::runtime_error("Failed to connect to media-service");
   }
 
-  auto media_client = media_client_wrapper->GetClient();
   std::vector<Media> _return_media;
   try {
     nlohmann::json req_json = {
@@ -240,11 +225,11 @@ std::vector<Media> ComposePostHandler::_ComposeMediaHelper(
     }
   } catch (...) {
     LOG(error) << "Failed to send compose-media to media-service";
-    _media_service_client_pool->Remove(media_client_wrapper);
+    _media_service_client_pool->Remove(media_client);
     span->Finish();
     throw;
   }
-  _media_service_client_pool->Keepalive(media_client_wrapper);
+  _media_service_client_pool->Keepalive(media_client);
   span->Finish();
   return _return_media;
 }
@@ -260,28 +245,30 @@ int64_t ComposePostHandler::_ComposeUniqueIdHelper(
   TextMapWriter writer(writer_text_map);
   opentracing::Tracer::Global()->Inject(span->context(), writer);
 
-  auto unique_id_client_wrapper = _unique_id_service_client_pool->Pop();
-  if (!unique_id_client_wrapper) {
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_THRIFT_CONN_ERROR;
-    se.message = "Failed to connect to unique_id-service";
-    LOG(error) << se.message;
+  auto unique_id_client = _unique_id_service_client_pool->Pop();
+  if (!unique_id_client) {
+    LOG(error) << "Failed to connect to unique_id-service";
     span->Finish();
-    throw se;
+    throw std::runtime_error("Failed to connect to unique_id-service");
   }
 
-  auto unique_id_client = unique_id_client_wrapper->GetClient();
   int64_t _return_unique_id;
   try {
-    _return_unique_id =
-        unique_id_client->ComposeUniqueId(req_id, post_type, writer_text_map);
+    nlohmann::json req_json = {
+      {"req_id", req_id},
+      {"post_type", static_cast<int>(post_type)},
+      {"carrier", writer_text_map}
+    };
+
+    auto res = unique_id_client->PostJson("/ComposeUniqueId", req_json);
+    _return_unique_id = res["unique_id"];
   } catch (...) {
     LOG(error) << "Failed to send compose-unique_id to unique_id-service";
-    _unique_id_service_client_pool->Remove(unique_id_client_wrapper);
+    _unique_id_service_client_pool->Remove(unique_id_client);
     span->Finish();
     throw;
   }
-  _unique_id_service_client_pool->Keepalive(unique_id_client_wrapper);
+  _unique_id_service_client_pool->Keepalive(unique_id_client);
   span->Finish();
   return _return_unique_id;
 }
@@ -297,16 +284,12 @@ void ComposePostHandler::_UploadPostHelper(
   TextMapWriter writer(writer_text_map);
   opentracing::Tracer::Global()->Inject(span->context(), writer);
 
-  auto post_storage_client_wrapper = _post_storage_client_pool->Pop();
-  if (!post_storage_client_wrapper) {
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_THRIFT_CONN_ERROR;
-    se.message = "Failed to connect to post-storage-service";
-    LOG(error) << se.message;
-    ;
-    throw se;
+  auto post_storage_client = _post_storage_client_pool->Pop();
+  if (!post_storage_client) {
+    LOG(error) << "Failed to connect to post-storage-service";
+    span->Finish();
+    throw std::runtime_error("Failed to connect to post-storage-service");
   }
-  auto post_storage_client = post_storage_client_wrapper->GetClient();
   try {
     nlohmann::json req_json = {
       {"req_id", req_id},
@@ -327,11 +310,11 @@ void ComposePostHandler::_UploadPostHelper(
     };
     auto res = post_storage_client->PostJson("/StorePost", req_json);
   } catch (...) {
-    _post_storage_client_pool->Remove(post_storage_client_wrapper);
+    _post_storage_client_pool->Remove(post_storage_client);
     LOG(error) << "Failed to store post to post-storage-service";
     throw;
   }
-  _post_storage_client_pool->Keepalive(post_storage_client_wrapper);
+  _post_storage_client_pool->Keepalive(post_storage_client);
 
   span->Finish();
 }
@@ -347,16 +330,12 @@ void ComposePostHandler::_UploadUserTimelineHelper(
   TextMapWriter writer(writer_text_map);
   opentracing::Tracer::Global()->Inject(span->context(), writer);
 
-  auto user_timeline_client_wrapper = _user_timeline_client_pool->Pop();
-  if (!user_timeline_client_wrapper) {
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_THRIFT_CONN_ERROR;
-    se.message = "Failed to connect to user-timeline-service";
-    LOG(error) << se.message;
-    ;
-    throw se;
+  auto user_timeline_client = _user_timeline_client_pool->Pop();
+  if (!user_timeline_client) {
+    LOG(error) << "Failed to connect to user-timeline-service";
+    span->Finish();
+    throw std::runtime_error("Failed to connect to user-timeline-service");
   }
-  auto user_timeline_client = user_timeline_client_wrapper->GetClient();
   try {
     nlohmann::json req_json = {
       {"req_id", req_id},
@@ -367,10 +346,10 @@ void ComposePostHandler::_UploadUserTimelineHelper(
     };
     user_timeline_client->PostJson("/WriteUserTimeline", req_json);
   } catch (...) {
-    _user_timeline_client_pool->Remove(user_timeline_client_wrapper);
+    _user_timeline_client_pool->Remove(user_timeline_client);
     throw;
   }
-  _user_timeline_client_pool->Keepalive(user_timeline_client_wrapper);
+  _user_timeline_client_pool->Keepalive(user_timeline_client);
 
   span->Finish();
 }
@@ -387,16 +366,12 @@ void ComposePostHandler::_UploadHomeTimelineHelper(
   TextMapWriter writer(writer_text_map);
   opentracing::Tracer::Global()->Inject(span->context(), writer);
 
-  auto home_timeline_client_wrapper = _home_timeline_client_pool->Pop();
-  if (!home_timeline_client_wrapper) {
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_THRIFT_CONN_ERROR;
-    se.message = "Failed to connect to home-timeline-service";
-    LOG(error) << se.message;
-    ;
-    throw se;
+  auto home_timeline_client = _home_timeline_client_pool->Pop();
+  if (!home_timeline_client) {
+    LOG(error) << "Failed to connect to home-timeline-service";
+    span->Finish();
+    throw std::runtime_error("Failed to connect to home-timeline-service");
   }
-  auto home_timeline_client = home_timeline_client_wrapper->GetClient();
   try {
     nlohmann::json req_json = {
       {"req_id", req_id},
@@ -408,11 +383,11 @@ void ComposePostHandler::_UploadHomeTimelineHelper(
     };
     home_timeline_client->PostJson("/WriteHomeTimeline", req_json);
   } catch (...) {
-    _home_timeline_client_pool->Remove(home_timeline_client_wrapper);
+    _home_timeline_client_pool->Remove(home_timeline_client);
     LOG(error) << "Failed to write home timeline to home-timeline-service";
     throw;
   }
-  _home_timeline_client_pool->Keepalive(home_timeline_client_wrapper);
+  _home_timeline_client_pool->Keepalive(home_timeline_client);
 
   span->Finish();
 }

@@ -19,9 +19,9 @@ RUN apt-get update \
   && apt-get install -y ${BUILD_DEPS} --no-install-recommends \
   # Install mongo-c-driver
   && cd /tmp \
-  && wget https://github.com/mongodb/mongo-c-driver/releases/download/${LIB_MONGOC_VERSION}/mongo-c-driver-${LIB_MONGOC_VERSION}.tar.gz \
-  && tar -zxf mongo-c-driver-${LIB_MONGOC_VERSION}.tar.gz \
-  && cd mongo-c-driver-${LIB_MONGOC_VERSION} \
+  && wget https://github.com/mongodb/mongo-c-driver/releases/download/1.15.0/mongo-c-driver-1.15.0.tar.gz \
+  && tar -zxf mongo-c-driver-1.15.0.tar.gz \
+  && cd mongo-c-driver-1.15.0 \
   && mkdir -p cmake-build \
   && cd cmake-build \
   && cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_TESTS=0 -DENABLE_EXAMPLES=0 .. \
@@ -29,9 +29,9 @@ RUN apt-get update \
   && make install \
   && cd /tmp \
   # Install lib-thrift
-  && wget -O thrift-${LIB_THRIFT_VERSION}.tar.gz https://github.com/apache/thrift/archive/v${LIB_THRIFT_VERSION}.tar.gz \
-  && tar -zxf thrift-${LIB_THRIFT_VERSION}.tar.gz \
-  && cd thrift-${LIB_THRIFT_VERSION} \
+  && wget -O thrift-0.12.0.tar.gz https://github.com/apache/thrift/archive/v0.12.0.tar.gz \
+  && tar -zxf thrift-0.12.0.tar.gz \
+  && cd thrift-0.12.0 \
   && mkdir -p cmake-build \
   && cd cmake-build \
   && cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=0 .. \
@@ -39,9 +39,9 @@ RUN apt-get update \
   && make install \
   && cd /tmp \
   # Install /nlohmann/json
-  && wget -O json-${LIB_JSON_VERSION}.tar.gz https://github.com/nlohmann/json/archive/v${LIB_JSON_VERSION}.tar.gz \
-  && tar -zxf json-${LIB_JSON_VERSION}.tar.gz \
-  && cd json-${LIB_JSON_VERSION} \
+  && wget -O json-3.6.1.tar.gz https://github.com/nlohmann/json/archive/v3.6.1.tar.gz \
+  && tar -zxf json-3.6.1.tar.gz \
+  && cd json-3.6.1 \
   && mkdir -p cmake-build \
   && cd cmake-build \
   && cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=0 .. \
@@ -49,9 +49,9 @@ RUN apt-get update \
   && make install \
   && cd /tmp \
   # Install yaml-cpp
-  && wget -O yaml-cpp-${LIB_YAML_VERSION}.tar.gz https://github.com/jbeder/yaml-cpp/archive/yaml-cpp-${LIB_YAML_VERSION}.tar.gz \
-  && tar -zxf yaml-cpp-${LIB_YAML_VERSION}.tar.gz \
-  && cd yaml-cpp-yaml-cpp-${LIB_YAML_VERSION} \
+  && wget -O yaml-cpp-0.6.2.tar.gz https://github.com/jbeder/yaml-cpp/archive/yaml-cpp-0.6.2.tar.gz \
+  && tar -zxf yaml-cpp-0.6.2.tar.gz \
+  && cd yaml-cpp-yaml-cpp-0.6.2 \
   && mkdir -p cmake-build \
   && cd cmake-build \
   && cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-fPIC" -DYAML_CPP_BUILD_TESTS=0 .. \
@@ -59,9 +59,9 @@ RUN apt-get update \
   && make install \
   && cd /tmp \
   # Install opentracing-cpp
-  && wget -O opentracing-cpp-${LIB_OPENTRACING_VERSION}.tar.gz https://github.com/opentracing/opentracing-cpp/archive/v${LIB_OPENTRACING_VERSION}.tar.gz \
-  && tar -zxf opentracing-cpp-${LIB_OPENTRACING_VERSION}.tar.gz \
-  && cd opentracing-cpp-${LIB_OPENTRACING_VERSION} \
+  && wget -O opentracing-cpp-1.5.1.tar.gz https://github.com/opentracing/opentracing-cpp/archive/v1.5.1.tar.gz \
+  && tar -zxf opentracing-cpp-1.5.1.tar.gz \
+  && cd opentracing-cpp-1.5.1 \
   && mkdir -p cmake-build \
   && cd cmake-build \
   && cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-fPIC" -DBUILD_TESTING=0 .. \
@@ -69,9 +69,9 @@ RUN apt-get update \
   && make install \
   && cd /tmp \
   # Install jaeger-client-cpp
-  && wget -O jaeger-client-cpp-${LIB_JAEGER_VERSION}.tar.gz https://github.com/jaegertracing/jaeger-client-cpp/archive/v${LIB_JAEGER_VERSION}.tar.gz \
-  && tar -zxf jaeger-client-cpp-${LIB_JAEGER_VERSION}.tar.gz \
-  && cd jaeger-client-cpp-${LIB_JAEGER_VERSION} \
+  && wget -O jaeger-client-cpp-0.4.2.tar.gz https://github.com/jaegertracing/jaeger-client-cpp/archive/v0.4.2.tar.gz \
+  && tar -zxf jaeger-client-cpp-0.4.2.tar.gz \
+  && cd jaeger-client-cpp-0.4.2 \
   && mkdir -p cmake-build \
   && cd cmake-build \
   && cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-fPIC" -DHUNTER_ENABLED=0 -DBUILD_TESTING=0 -DJAEGERTRACING_WITH_YAML_CPP=1 -DJAEGERTRACING_BUILD_EXAMPLES=0 .. \
@@ -79,9 +79,9 @@ RUN apt-get update \
   && make install \
   && cd /tmp \
   # Install jwt
-  && wget -O cpp-jwt-${LIB_CPP_JWT_VERSION}.tar.gz https://github.com/arun11299/cpp-jwt/archive/v${LIB_CPP_JWT_VERSION}.tar.gz \
-  && tar -zxf cpp-jwt-${LIB_CPP_JWT_VERSION}.tar.gz \
-  && cd cpp-jwt-${LIB_CPP_JWT_VERSION} \
+  && wget -O cpp-jwt-1.1.1.tar.gz https://github.com/arun11299/cpp-jwt/archive/v1.1.1.tar.gz \
+  && tar -zxf cpp-jwt-1.1.1.tar.gz \
+  && cd cpp-jwt-1.1.1 \
   && cp -R include/jwt /usr/local/include \
   # use the dependency in /usr/local/include instead of in jwt/json
   && rm -rf /usr/local/include/jwt/json \
@@ -133,20 +133,20 @@ RUN apt-get update \
   # Clean up
   && cd /tmp \
   && rm -rf \
-    mongo-c-driver-${LIB_MONGOC_VERSION}.tar.gz \
-    mongo-c-driver-${LIB_MONGOC_VERSION} \
-    thrift-${LIB_THRIFT_VERSION}.tar.gz \
-    thrift-${LIB_THRIFT_VERSION} \
-    json-${LIB_JSON_VERSION}.tar.gz \
-    json-${LIB_JSON_VERSION} \
-    jaeger-client-cpp-${LIB_JAEGER_VERSION}.tar.gz \
-    jaeger-client-cpp-${LIB_JAEGER_VERSION} \
-    yaml-cpp-${LIB_YAML_VERSION}.tar.gz \
-    yaml-cpp-yaml-cpp-${LIB_YAML_VERSION} \
-    opentracing-cpp-${LIB_OPENTRACING_VERSION}.tar.gz \
-    opentracing-cpp-${LIB_OPENTRACING_VERSION} \
-    cpp-jwt-${LIB_CPP_JWT_VERSION}.tar.gz \
-    cpp-jwt-${LIB_CPP_JWT_VERSION} \
+    mongo-c-driver-1.15.0.tar.gz \
+    mongo-c-driver-1.15.0 \
+    thrift-0.12.0.tar.gz \
+    thrift-0.12.0 \
+    json-3.6.1.tar.gz \
+    json-3.6.1 \
+    jaeger-client-cpp-0.4.2.tar.gz \
+    jaeger-client-cpp-0.4.2 \
+    yaml-cpp-0.6.2.tar.gz \
+    yaml-cpp-yaml-cpp-0.6.2 \
+    opentracing-cpp-1.5.1.tar.gz \
+    opentracing-cpp-1.5.1 \
+    cpp-jwt-1.1.1.tar.gz \
+    cpp-jwt-1.1.1 \
     cpp_redis \
     AMQP-CPP \
     SimpleAmqpClient

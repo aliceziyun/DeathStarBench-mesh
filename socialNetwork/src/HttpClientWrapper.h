@@ -1,3 +1,9 @@
+#ifndef SOCIALNETWORK_SRC_HTTPCLIENTWRAPPER_H_
+#define SOCIALNETWORK_SRC_HTTPCLIENTWRAPPER_H_
+
+#include <string>
+#include "httplib.h"
+
 class HttpClientWrapper {
 public:
     HttpClientWrapper(const std::string& host, int port, int timeout_ms)
@@ -14,6 +20,7 @@ public:
                        std::chrono::system_clock::now().time_since_epoch()).count();
         _connect_timestamp = now;
     }
+    
 
     nlohmann::json PostJson(const std::string& path,
                             const nlohmann::json& body) {
@@ -39,3 +46,5 @@ public:
 private:
     httplib::Client cli;
 };
+
+#endif  // SOCIALNETWORK_SRC_HTTPCLIENTWRAPPER_H_

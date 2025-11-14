@@ -1,5 +1,5 @@
 #include <signal.h>
-#include "httplib.h"
+// #include "./httplib.h"
 
 #include "../utils.h"
 #include "ComposePostHandler.h"
@@ -26,56 +26,70 @@ int main(int argc, char *argv[]) {
         "post-storage-client",
         config_json["post-storage-service"]["addr"],
         config_json["post-storage-service"]["port"],
+        0,
         config_json["post-storage-service"]["connections"],
-        config_json["post-storage-service"]["timeout_ms"]
+        config_json["post-storage-service"]["timeout_ms"],
+        config_json["post-storage-service"]["keepalive_ms"]
     );
 
     ClientPool<HttpClientWrapper> user_timeline_client_pool(
         "user-timeline-client",
         config_json["user-timeline-service"]["addr"],
         config_json["user-timeline-service"]["port"],
+        0,
         config_json["user-timeline-service"]["connections"],
-        config_json["user-timeline-service"]["timeout_ms"]
+        config_json["user-timeline-service"]["timeout_ms"],
+        config_json["user-timeline-service"]["keepalive_ms"]
     );
 
     ClientPool<HttpClientWrapper> text_client_pool(
         "text-service-client",
         config_json["text-service"]["addr"],
         config_json["text-service"]["port"],
+        0,
         config_json["text-service"]["connections"],
-        config_json["text-service"]["timeout_ms"]
+        config_json["text-service"]["timeout_ms"],
+        config_json["text-service"]["keepalive_ms"]
     );
 
     ClientPool<HttpClientWrapper> user_client_pool(
         "user-service-client",
         config_json["user-service"]["addr"],
         config_json["user-service"]["port"],
+        0,
         config_json["user-service"]["connections"],
-        config_json["user-service"]["timeout_ms"]
+        config_json["user-service"]["timeout_ms"],
+        config_json["user-service"]["keepalive_ms"]
     );
 
     ClientPool<HttpClientWrapper> media_client_pool(
         "media-service-client",
         config_json["media-service"]["addr"],
         config_json["media-service"]["port"],
+        0,
         config_json["media-service"]["connections"],
-        config_json["media-service"]["timeout_ms"]
+        config_json["media-service"]["timeout_ms"],
+        config_json["media-service"]["keepalive_ms"]
     );
 
     ClientPool<HttpClientWrapper> home_timeline_client_pool(
         "home-timeline-service-client",
         config_json["home-timeline-service"]["addr"],
         config_json["home-timeline-service"]["port"],
+        0,
         config_json["home-timeline-service"]["connections"],
-        config_json["home-timeline-service"]["timeout_ms"]
+        config_json["home-timeline-service"]["timeout_ms"],
+        config_json["home-timeline-service"]["keepalive_ms"]
     );
 
     ClientPool<HttpClientWrapper> unique_id_client_pool(
         "unique-id-service-client",
         config_json["unique-id-service"]["addr"],
         config_json["unique-id-service"]["port"],
+        0,
         config_json["unique-id-service"]["connections"],
-        config_json["unique-id-service"]["timeout_ms"]
+        config_json["unique-id-service"]["timeout_ms"],
+        config_json["unique-id-service"]["keepalive_ms"]
     );
 
 //   ClientPool<ThriftClient<PostStorageServiceClient>> post_storage_client_pool(
