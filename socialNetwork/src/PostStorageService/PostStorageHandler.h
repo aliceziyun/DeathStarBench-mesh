@@ -11,27 +11,27 @@
 #include <nlohmann/json.hpp>
 #include <string>
 
-#include "../../gen-cpp/PostStorageService.h"
 #include "../logger.h"
 #include "../tracing.h"
+#include "../social_network_types.h"
 
 namespace social_network {
 using json = nlohmann::json;
 
-class PostStorageHandler : public PostStorageServiceIf {
+class PostStorageHandler {
  public:
   PostStorageHandler(memcached_pool_st *, mongoc_client_pool_t *);
-  ~PostStorageHandler() override = default;
+  ~PostStorageHandler() = default;
 
   void StorePost(int64_t req_id, const Post &post,
-                 const std::map<std::string, std::string> &carrier) override;
+                 const std::map<std::string, std::string> &carrier);
 
   void ReadPost(Post &_return, int64_t req_id, int64_t post_id,
-                const std::map<std::string, std::string> &carrier) override;
+                const std::map<std::string, std::string> &carrier);
 
   void ReadPosts(std::vector<Post> &_return, int64_t req_id,
                  const std::vector<int64_t> &post_ids,
-                 const std::map<std::string, std::string> &carrier) override;
+                 const std::map<std::string, std::string> &carrier);
 
  private:
   memcached_pool_st *_memcached_client_pool;
@@ -60,20 +60,16 @@ void PostStorageHandler::StorePost(
   mongoc_client_t *mongodb_client =
       mongoc_client_pool_pop(_mongodb_client_pool);
   if (!mongodb_client) {
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-    se.message = "Failed to pop a client from MongoDB pool";
-    throw se;
+    LOG(error) << "Failed to pop mongoc client";
+    throw std::runtime_error("Failed to pop mongoc client");
   }
 
   auto collection =
       mongoc_client_get_collection(mongodb_client, "post", "post");
   if (!collection) {
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-    se.message = "Failed to create collection user from DB user";
+    LOG(error) << "Failed to create collection user from DB user";
     mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-    throw se;
+    throw std::runtime_error("Failed to create collection user from DB user");
   }
 
   bson_t *new_doc = bson_new();
@@ -145,13 +141,10 @@ void PostStorageHandler::StorePost(
 
   if (!inserted) {
     LOG(error) << "Error: Failed to insert post to MongoDB: " << error.message;
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-    se.message = error.message;
     bson_destroy(new_doc);
     mongoc_collection_destroy(collection);
     mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-    throw se;
+    throw std::runtime_error(error.message);
   }
 
   bson_destroy(new_doc);
@@ -179,10 +172,8 @@ void PostStorageHandler::ReadPost(
   memcached_st *memcached_client =
       memcached_pool_pop(_memcached_client_pool, true, &memcached_rc);
   if (!memcached_client) {
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_MEMCACHED_ERROR;
-    se.message = "Failed to pop a client from memcached pool";
-    throw se;
+    LOG(error) << "Failed to pop a client from memcached pool";
+    throw std::runtime_error("Failed to pop a client from memcached pool");
   }
 
   size_t post_mmc_size;
@@ -193,11 +184,9 @@ void PostStorageHandler::ReadPost(
       memcached_get(memcached_client, post_id_str.c_str(), post_id_str.length(),
                     &post_mmc_size, &memcached_flags, &memcached_rc);
   if (!post_mmc && memcached_rc != MEMCACHED_NOTFOUND) {
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_MEMCACHED_ERROR;
-    se.message = memcached_strerror(memcached_client, memcached_rc);
+    LOG(error) << memcached_strerror(memcached_client, memcached_rc);
     memcached_pool_push(_memcached_client_pool, memcached_client);
-    throw se;
+    throw std::runtime_error(memcached_strerror(memcached_client, memcached_rc));
   }
   memcached_pool_push(_memcached_client_pool, memcached_client);
   get_span->Finish();
@@ -237,20 +226,16 @@ void PostStorageHandler::ReadPost(
     mongoc_client_t *mongodb_client =
         mongoc_client_pool_pop(_mongodb_client_pool);
     if (!mongodb_client) {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-      se.message = "Failed to pop a client from MongoDB pool";
-      throw se;
+      LOG(error) << "Failed to pop a client from MongoDB pool";
+      throw std::runtime_error("Failed to pop a client from MongoDB pool");
     }
 
     auto collection =
         mongoc_client_get_collection(mongodb_client, "post", "post");
     if (!collection) {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-      se.message = "Failed to create collection user from DB user";
+      LOG(error) << "Failed to create collection user from DB user";
       mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-      throw se;
+      throw std::runtime_error("Failed to create collection user from DB user");
     }
 
     bson_t *query = bson_new();
@@ -271,21 +256,15 @@ void PostStorageHandler::ReadPost(
         mongoc_cursor_destroy(cursor);
         mongoc_collection_destroy(collection);
         mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-        ServiceException se;
-        se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-        se.message = error.message;
-        throw se;
+        throw std::runtime_error(error.message);
       } else {
         LOG(warning) << "Post_id: " << post_id << " doesn't exist in MongoDB";
         bson_destroy(query);
         mongoc_cursor_destroy(cursor);
         mongoc_collection_destroy(collection);
         mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-        ServiceException se;
-        se.errorCode = ErrorCode::SE_THRIFT_HANDLER_ERROR;
-        se.message =
-            "Post_id: " + std::to_string(post_id) + " doesn't exist in MongoDB";
-        throw se;
+        throw std::runtime_error("Post_id: " + std::to_string(post_id) +
+                                 " doesn't exist in MongoDB");
       }
     } else {
       LOG(debug) << "Post_id: " << post_id << " found in MongoDB";
@@ -325,10 +304,8 @@ void PostStorageHandler::ReadPost(
       memcached_client =
           memcached_pool_pop(_memcached_client_pool, true, &memcached_rc);
       if (!memcached_client) {
-        ServiceException se;
-        se.errorCode = ErrorCode::SE_MEMCACHED_ERROR;
-        se.message = "Failed to pop a client from memcached pool";
-        throw se;
+        LOG(error) << "Failed to pop a client from memcached pool";
+        throw std::runtime_error("Failed to pop a client from memcached pool");
       }
       auto set_span = opentracing::Tracer::Global()->StartSpan(
           "post_storage_mmc_set_client",
@@ -371,20 +348,15 @@ void PostStorageHandler::ReadPosts(
   std::set<int64_t> post_ids_not_cached(post_ids.begin(), post_ids.end());
   if (post_ids_not_cached.size() != post_ids.size()) {
     LOG(error)<< "Post_ids are duplicated";
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_THRIFT_HANDLER_ERROR;
-    se.message = "Post_ids are duplicated";
-    throw se;
+    throw std::runtime_error("Post_ids are duplicated");
   }
   std::map<int64_t, Post> return_map;
   memcached_return_t memcached_rc;
   auto memcached_client =
       memcached_pool_pop(_memcached_client_pool, true, &memcached_rc);
   if (!memcached_client) {
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_MEMCACHED_ERROR;
-    se.message = "Failed to pop a client from memcached pool";
-    throw se;
+    LOG(error) << "Failed to pop a client from memcached pool";
+    throw std::runtime_error("Failed to pop a client from memcached pool");
   }
 
   char **keys;
@@ -404,11 +376,8 @@ void PostStorageHandler::ReadPosts(
   if (memcached_rc != MEMCACHED_SUCCESS) {
     LOG(error) << "Cannot get post_ids of request " << req_id << ": "
                << memcached_strerror(memcached_client, memcached_rc);
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_MEMCACHED_ERROR;
-    se.message = memcached_strerror(memcached_client, memcached_rc);
     memcached_pool_push(_memcached_client_pool, memcached_client);
-    throw se;
+    throw std::runtime_error(memcached_strerror(memcached_client, memcached_rc));
   }
 
   char return_key[MEMCACHED_MAX_KEY];
@@ -432,10 +401,7 @@ void PostStorageHandler::ReadPosts(
       memcached_quit(memcached_client);
       memcached_pool_push(_memcached_client_pool, memcached_client);
       LOG(error) << "Cannot get posts of request " << req_id;
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_MEMCACHED_ERROR;
-      se.message = "Cannot get posts of request " + std::to_string(req_id);
-      throw se;
+      throw std::runtime_error("Cannot get posts of request " + std::to_string(req_id));
     }
     Post new_post;
     json post_json = json::parse(
@@ -486,19 +452,15 @@ void PostStorageHandler::ReadPosts(
     mongoc_client_t *mongodb_client =
         mongoc_client_pool_pop(_mongodb_client_pool);
     if (!mongodb_client) {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-      se.message = "Failed to pop a client from MongoDB pool";
-      throw se;
+      LOG(error) << "Failed to pop a client from MongoDB pool";
+      throw std::runtime_error("Failed to pop a client from MongoDB pool");
     }
     auto collection =
         mongoc_client_get_collection(mongodb_client, "post", "post");
     if (!collection) {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-      se.message = "Failed to create collection user from DB user";
+      LOG(error) << "Failed to create collection user from DB user";
       mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-      throw se;
+      throw std::runtime_error("Failed to create collection user from DB user");
     }
     bson_t *query = bson_new();
     bson_t query_child;
@@ -567,10 +529,7 @@ void PostStorageHandler::ReadPosts(
       mongoc_cursor_destroy(cursor);
       mongoc_collection_destroy(collection);
       mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-      se.message = error.message;
-      throw se;
+      throw std::runtime_error(error.message);
     }
     bson_destroy(query);
     mongoc_cursor_destroy(cursor);
@@ -584,10 +543,7 @@ void PostStorageHandler::ReadPosts(
           memcached_pool_pop(_memcached_client_pool, true, &_rc);
       if (!_memcached_client) {
         LOG(error) << "Failed to pop a client from memcached pool";
-        ServiceException se;
-        se.errorCode = ErrorCode::SE_MEMCACHED_ERROR;
-        se.message = "Failed to pop a client from memcached pool";
-        throw se;
+        throw std::runtime_error("Failed to pop a client from memcached pool");
       }
       auto set_span = opentracing::Tracer::Global()->StartSpan(
           "mmc_set_client", {opentracing::ChildOf(&span->context())});
@@ -611,10 +567,7 @@ void PostStorageHandler::ReadPosts(
       LOG(warning) << "Failed to set posts to memcached";
     }
     LOG(error) << "Return set incomplete";
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_THRIFT_HANDLER_ERROR;
-    se.message = "Return set incomplete";
-    throw se;
+    throw std::runtime_error("Return set incomplete");
   }
 
   for (auto &post_id : post_ids) {
