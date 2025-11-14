@@ -13,7 +13,8 @@ void sigintHandler(int sig) { exit(EXIT_SUCCESS); }
 int main(int argc, char *argv[]) {
     signal(SIGINT, sigintHandler);
     init_logger();
-    SetUpTracer("config/jaeger-config.yml", "compose-post-service");
+    // TODO: should I enable tracing?
+    // SetUpTracer("config/jaeger-config.yml", "compose-post-service");
 
     json config_json;
     if (load_config_file("config/service-config.json", &config_json) != 0) {
