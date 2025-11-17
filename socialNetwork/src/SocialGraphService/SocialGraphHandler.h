@@ -12,12 +12,11 @@
 #include <thread>
 #include <vector>
 
-#include "../../gen-cpp/SocialGraphService.h"
-#include "../../gen-cpp/UserService.h"
 #include "../ClientPool.h"
-#include "../ThriftClient.h"
+#include "../HttpClientWrapper.h"
 #include "../logger.h"
 #include "../tracing.h"
+#include "../social_network_types.h"
 
 using namespace sw::redis;
 
@@ -27,31 +26,31 @@ using std::chrono::duration_cast;
 using std::chrono::milliseconds;
 using std::chrono::system_clock;
 
-class SocialGraphHandler : public SocialGraphServiceIf {
+class SocialGraphHandler {
  public:
   SocialGraphHandler(mongoc_client_pool_t *, Redis *,
-                     ClientPool<ThriftClient<UserServiceClient>> *);
+                     ClientPool<HttpClientWrapper> *);
   SocialGraphHandler(mongoc_client_pool_t *, Redis *, Redis *,
-      ClientPool<ThriftClient<UserServiceClient>>*);
+      ClientPool<HttpClientWrapper> *);
   SocialGraphHandler(mongoc_client_pool_t *, RedisCluster *,
-                     ClientPool<ThriftClient<UserServiceClient>> *);
-  ~SocialGraphHandler() override = default;
+                     ClientPool<HttpClientWrapper> *);
+  ~SocialGraphHandler() = default;
   bool IsRedisReplicationEnabled();
   void GetFollowers(std::vector<int64_t> &, int64_t, int64_t,
-                    const std::map<std::string, std::string> &) override;
+          const std::map<std::string, std::string> &);
   void GetFollowees(std::vector<int64_t> &, int64_t, int64_t,
-                    const std::map<std::string, std::string> &) override;
+          const std::map<std::string, std::string> &);
   void Follow(int64_t, int64_t, int64_t,
-              const std::map<std::string, std::string> &) override;
+        const std::map<std::string, std::string> &);
   void Unfollow(int64_t, int64_t, int64_t,
-                const std::map<std::string, std::string> &) override;
+        const std::map<std::string, std::string> &);
   void FollowWithUsername(int64_t, const std::string &, const std::string &,
-                          const std::map<std::string, std::string> &) override;
+              const std::map<std::string, std::string> &);
   void UnfollowWithUsername(
-      int64_t, const std::string &, const std::string &,
-      const std::map<std::string, std::string> &) override;
+    int64_t, const std::string &, const std::string &,
+    const std::map<std::string, std::string> &);
   void InsertUser(int64_t, int64_t,
-                  const std::map<std::string, std::string> &) override;
+          const std::map<std::string, std::string> &);
 
  private:
   mongoc_client_pool_t *_mongodb_client_pool;
@@ -59,12 +58,12 @@ class SocialGraphHandler : public SocialGraphServiceIf {
   Redis *_redis_replica_client_pool;
   Redis *_redis_primary_client_pool;
   RedisCluster *_redis_cluster_client_pool;
-  ClientPool<ThriftClient<UserServiceClient>> *_user_service_client_pool;
+  ClientPool<HttpClientWrapper> *_user_service_client_pool;
 };
 
 SocialGraphHandler::SocialGraphHandler(
     mongoc_client_pool_t *mongodb_client_pool, Redis *redis_client_pool,
-    ClientPool<ThriftClient<UserServiceClient>> *user_service_client_pool) {
+    ClientPool<HttpClientWrapper> *user_service_client_pool) {
   _mongodb_client_pool = mongodb_client_pool;
   _redis_client_pool = redis_client_pool;
   _redis_replica_client_pool = nullptr;
@@ -75,7 +74,7 @@ SocialGraphHandler::SocialGraphHandler(
 
 SocialGraphHandler::SocialGraphHandler(
     mongoc_client_pool_t* mongodb_client_pool, Redis* redis_replica_client_pool, Redis* redis_primary_client_pool,
-    ClientPool<ThriftClient<UserServiceClient>>* user_service_client_pool) {
+    ClientPool<HttpClientWrapper>* user_service_client_pool) {
     _mongodb_client_pool = mongodb_client_pool;
     _redis_client_pool = nullptr;
     _redis_replica_client_pool = redis_replica_client_pool;
@@ -87,7 +86,7 @@ SocialGraphHandler::SocialGraphHandler(
 SocialGraphHandler::SocialGraphHandler(
     mongoc_client_pool_t *mongodb_client_pool,
     RedisCluster *redis_cluster_client_pool,
-    ClientPool<ThriftClient<UserServiceClient>> *user_service_client_pool) {
+    ClientPool<HttpClientWrapper> *user_service_client_pool) {
   _mongodb_client_pool = mongodb_client_pool;
   _redis_client_pool = nullptr;
   _redis_replica_client_pool = nullptr;
@@ -121,19 +120,16 @@ void SocialGraphHandler::Follow(
         mongoc_client_t *mongodb_client =
             mongoc_client_pool_pop(_mongodb_client_pool);
         if (!mongodb_client) {
-          ServiceException se;
-          se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-          se.message = "Failed to pop a client from MongoDB pool";
-          throw se;
+          LOG(error) << "Failed to connect to MongoDB";
+          throw std::runtime_error("Failed to connect to MongoDB");
         }
         auto collection = mongoc_client_get_collection(
             mongodb_client, "social-graph", "social-graph");
         if (!collection) {
-          ServiceException se;
-          se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-          se.message = "Failed to create collection social_graph from MongoDB";
+          LOG(error) << "Failed to create collection social_graph from MongoDB";
           mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-          throw se;
+          throw std::runtime_error(
+              "Failed to create collection social_graph from MongoDB");
         }
 
         // Update follower->followee edges
@@ -155,15 +151,12 @@ void SocialGraphHandler::Follow(
         if (!updated) {
           LOG(error) << "Failed to update social graph for user " << user_id
                      << " to MongoDB: " << error.message;
-          ServiceException se;
-          se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-          se.message = error.message;
           bson_destroy(&reply);
           bson_destroy(update);
           bson_destroy(search_not_exist);
           mongoc_collection_destroy(collection);
           mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-          throw se;
+          throw std::runtime_error("Failed to update social graph for user " + std::to_string(user_id) + " to MongoDB: " + error.message);
         }
         update_span->Finish();
         bson_destroy(&reply);
@@ -178,19 +171,16 @@ void SocialGraphHandler::Follow(
         mongoc_client_t *mongodb_client =
             mongoc_client_pool_pop(_mongodb_client_pool);
         if (!mongodb_client) {
-          ServiceException se;
-          se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-          se.message = "Failed to pop a client from MongoDB pool";
-          throw se;
+          LOG(error) << "Failed to connect to MongoDB";
+          throw std::runtime_error("Failed to connect to MongoDB");
         }
         auto collection = mongoc_client_get_collection(
             mongodb_client, "social-graph", "social-graph");
         if (!collection) {
-          ServiceException se;
-          se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-          se.message = "Failed to create collection social_graph from MongoDB";
+          LOG(error) << "Failed to create collection social_graph from MongoDB";
           mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-          throw se;
+          throw std::runtime_error(
+              "Failed to create collection social_graph from MongoDB");
         }
 
         // Update followee->follower edges
@@ -212,15 +202,13 @@ void SocialGraphHandler::Follow(
         if (!updated) {
           LOG(error) << "Failed to update social graph for user " << followee_id
                      << " to MongoDB: " << error.message;
-          ServiceException se;
-          se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-          se.message = error.message;
+          update_span->Finish();
           bson_destroy(update);
           bson_destroy(&reply);
           bson_destroy(search_not_exist);
           mongoc_collection_destroy(collection);
           mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-          throw se;
+          throw std::runtime_error("Failed to update social graph for user " + std::to_string(followee_id) + " to MongoDB: " + error.message);
         }
         update_span->Finish();
         bson_destroy(update);
@@ -317,19 +305,16 @@ void SocialGraphHandler::Unfollow(
         mongoc_client_t *mongodb_client =
             mongoc_client_pool_pop(_mongodb_client_pool);
         if (!mongodb_client) {
-          ServiceException se;
-          se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-          se.message = "Failed to pop a client from MongoDB pool";
-          throw se;
+          LOG(error) << "Failed to connect to MongoDB";
+          throw std::runtime_error("Failed to connect to MongoDB");
         }
         auto collection = mongoc_client_get_collection(
             mongodb_client, "social-graph", "social-graph");
         if (!collection) {
-          ServiceException se;
-          se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-          se.message = "Failed to create collection social_graph from MongoDB";
+          LOG(error) << "Failed to create collection social_graph from MongoDB";
           mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-          throw se;
+          throw std::runtime_error(
+              "Failed to create collection social_graph from MongoDB");
         }
         bson_t *query = bson_new();
 
@@ -348,15 +333,12 @@ void SocialGraphHandler::Unfollow(
         if (!updated) {
           LOG(error) << "Failed to delete social graph for user " << user_id
                      << " to MongoDB: " << error.message;
-          ServiceException se;
-          se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-          se.message = error.message;
           bson_destroy(update);
           bson_destroy(query);
           bson_destroy(&reply);
           mongoc_collection_destroy(collection);
           mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-          throw se;
+          throw std::runtime_error("Failed to delete social graph for user " + std::to_string(user_id) + " to MongoDB: " + error.message);
         }
         update_span->Finish();
         bson_destroy(update);
@@ -371,19 +353,16 @@ void SocialGraphHandler::Unfollow(
         mongoc_client_t *mongodb_client =
             mongoc_client_pool_pop(_mongodb_client_pool);
         if (!mongodb_client) {
-          ServiceException se;
-          se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-          se.message = "Failed to pop a client from MongoDB pool";
-          throw se;
+          LOG(error) << "Failed to pop a client from MongoDB pool";
+          throw std::runtime_error("Failed to pop a client from MongoDB pool");
         }
         auto collection = mongoc_client_get_collection(
             mongodb_client, "social-graph", "social-graph");
         if (!collection) {
-          ServiceException se;
-          se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-          se.message = "Failed to create collection social_graph from MongoDB";
+          LOG(error) << "Failed to create collection social_graph from MongoDB";
           mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-          throw se;
+          throw std::runtime_error(
+              "Failed to create collection social_graph from MongoDB");
         }
         bson_t *query = bson_new();
 
@@ -402,15 +381,14 @@ void SocialGraphHandler::Unfollow(
         if (!updated) {
           LOG(error) << "Failed to delete social graph for user " << followee_id
                      << " to MongoDB: " << error.message;
-          ServiceException se;
-          se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-          se.message = error.message;
+          LOG(error) << "Failed to delete social graph for user " << followee_id
+                     << " to MongoDB: " << error.message;
           bson_destroy(update);
           bson_destroy(query);
           bson_destroy(&reply);
           mongoc_collection_destroy(collection);
           mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-          throw se;
+          throw std::runtime_error("Failed to delete social graph for user " + std::to_string(followee_id) + " to MongoDB: " + error.message);
         }
         update_span->Finish();
         bson_destroy(update);
@@ -529,19 +507,16 @@ void SocialGraphHandler::GetFollowers(
     mongoc_client_t *mongodb_client =
         mongoc_client_pool_pop(_mongodb_client_pool);
     if (!mongodb_client) {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-      se.message = "Failed to pop a client from MongoDB pool";
-      throw se;
+      LOG(error) << "Failed to pop a client from MongoDB pool";
+      throw std::runtime_error("Failed to pop a client from MongoDB pool");
     }
     auto collection = mongoc_client_get_collection(
         mongodb_client, "social-graph", "social-graph");
     if (!collection) {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-      se.message = "Failed to create collection social_graph from MongoDB";
+      LOG(error) << "Failed to create collection social_graph from MongoDB";
       mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-      throw se;
+      throw std::runtime_error(
+          "Failed to create collection social_graph from MongoDB");
     }
     bson_t *query = bson_new();
     BSON_APPEND_INT64(query, "user_id", user_id);
@@ -668,19 +643,16 @@ void SocialGraphHandler::GetFollowees(
     mongoc_client_t *mongodb_client =
         mongoc_client_pool_pop(_mongodb_client_pool);
     if (!mongodb_client) {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-      se.message = "Failed to pop a client from MongoDB pool";
-      throw se;
+      LOG(error) << "Failed to pop a client from MongoDB pool";
+      throw std::runtime_error("Failed to pop a client from MongoDB pool");
     }
     auto collection = mongoc_client_get_collection(
         mongodb_client, "social-graph", "social-graph");
     if (!collection) {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-      se.message = "Failed to create collection social_graph from MongoDB";
+      LOG(error) << "Failed to create collection social_graph from MongoDB";
       mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-      throw se;
+      throw std::runtime_error(
+          "Failed to create collection social_graph from MongoDB");
     }
     bson_t *query = bson_new();
     BSON_APPEND_INT64(query, "user_id", user_id);
@@ -692,14 +664,12 @@ void SocialGraphHandler::GetFollowees(
     const bson_t *doc;
     bool found = mongoc_cursor_next(cursor, &doc);
     if (!found) {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_THRIFT_HANDLER_ERROR;
-      se.message = "Cannot find user_id in MongoDB.";
+      LOG(error) << "Cannot find user_id in MongoDB.";
       bson_destroy(query);
       mongoc_cursor_destroy(cursor);
       mongoc_collection_destroy(collection);
       mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-      throw se;
+      throw std::runtime_error("Cannot find user_id in MongoDB.");
     } else {
       bson_iter_t iter_0;
       bson_iter_t iter_1;
@@ -780,19 +750,16 @@ void SocialGraphHandler::InsertUser(
   mongoc_client_t *mongodb_client =
       mongoc_client_pool_pop(_mongodb_client_pool);
   if (!mongodb_client) {
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-    se.message = "Failed to pop a client from MongoDB pool";
-    throw se;
+    LOG(error) << "Failed to pop a client from MongoDB pool";
+    throw std::runtime_error("Failed to pop a client from MongoDB pool");
   }
   auto collection = mongoc_client_get_collection(mongodb_client, "social-graph",
                                                  "social-graph");
   if (!collection) {
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-    se.message = "Failed to create collection social_graph from MongoDB";
+    LOG(error) << "Failed to create collection social_graph from MongoDB";
     mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-    throw se;
+    throw std::runtime_error(
+        "Failed to create collection social_graph from MongoDB");
   }
 
   bson_t *new_doc = BCON_NEW("user_id", BCON_INT64(user_id), "followers", "[",
@@ -807,13 +774,10 @@ void SocialGraphHandler::InsertUser(
   if (!inserted) {
     LOG(error) << "Failed to insert social graph for user " << user_id
                << " to MongoDB: " << error.message;
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-    se.message = error.message;
     bson_destroy(new_doc);
     mongoc_collection_destroy(collection);
     mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-    throw se;
+    throw std::runtime_error("Failed to insert social graph for user " + std::to_string(user_id) + " to MongoDB: " + error.message);
   }
   bson_destroy(new_doc);
   mongoc_collection_destroy(collection);
@@ -836,46 +800,51 @@ void SocialGraphHandler::FollowWithUsername(
   opentracing::Tracer::Global()->Inject(span->context(), writer);
 
   std::future<int64_t> user_id_future = std::async(std::launch::async, [&]() {
-    auto user_client_wrapper = _user_service_client_pool->Pop();
-    if (!user_client_wrapper) {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_THRIFT_CONN_ERROR;
-      se.message = "Failed to connect to social-graph-service";
-      throw se;
+    auto user_client = _user_service_client_pool->Pop();
+    if (!user_client) {
+      LOG(error) << "Failed to connect to user-service";
+      throw std::runtime_error("Failed to connect to user-service");
     }
-    auto user_client = user_client_wrapper->GetClient();
     int64_t _return;
     try {
-      _return = user_client->GetUserId(req_id, user_name, writer_text_map);
+      json req_jso = {
+          {"req_id", req_id},
+          {"user_name", user_name},
+          {"carrier", writer_text_map},
+      };
+      auto res = user_client->PostJson("/GetUserId", req_jso);
+      _return = res["user_id"].get<int64_t>();
     } catch (...) {
-      _user_service_client_pool->Remove(user_client_wrapper);
+      _user_service_client_pool->Remove(user_client);
       LOG(error) << "Failed to get user_id from user-service";
       throw;
     }
-    _user_service_client_pool->Keepalive(user_client_wrapper);
+    _user_service_client_pool->Keepalive(user_client);
     return _return;
   });
 
   std::future<int64_t> followee_id_future =
       std::async(std::launch::async, [&]() {
-        auto user_client_wrapper = _user_service_client_pool->Pop();
-        if (!user_client_wrapper) {
-          ServiceException se;
-          se.errorCode = ErrorCode::SE_THRIFT_CONN_ERROR;
-          se.message = "Failed to connect to social-graph-service";
-          throw se;
+        auto user_client = _user_service_client_pool->Pop();
+        if (!user_client) {
+          LOG(error) << "Failed to connect to social-graph-service";
+          throw std::runtime_error("Failed to connect to social-graph-service");
         }
-        auto user_client = user_client_wrapper->GetClient();
         int64_t _return;
         try {
-          _return =
-              user_client->GetUserId(req_id, followee_name, writer_text_map);
+          json req_jso = {
+              {"req_id", req_id},
+              {"user_name", followee_name},
+              {"carrier", writer_text_map},
+          };
+          auto res = user_client->PostJson("/GetUserId", req_jso);
+          _return = res["user_id"].get<int64_t>();
         } catch (...) {
-          _user_service_client_pool->Remove(user_client_wrapper);
+          _user_service_client_pool->Remove(user_client);
           LOG(error) << "Failed to get user_id from user-service";
           throw;
         }
-        _user_service_client_pool->Keepalive(user_client_wrapper);
+        _user_service_client_pool->Keepalive(user_client);
         return _return;
       });
 
@@ -910,46 +879,51 @@ void SocialGraphHandler::UnfollowWithUsername(
   opentracing::Tracer::Global()->Inject(span->context(), writer);
 
   std::future<int64_t> user_id_future = std::async(std::launch::async, [&]() {
-    auto user_client_wrapper = _user_service_client_pool->Pop();
-    if (!user_client_wrapper) {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_THRIFT_CONN_ERROR;
-      se.message = "Failed to connect to social-graph-service";
-      throw se;
+    auto user_client = _user_service_client_pool->Pop();
+    if (!user_client) {
+      LOG(error) << "Failed to connect to social-graph-service";
+      throw std::runtime_error("Failed to connect to social-graph-service");
     }
-    auto user_client = user_client_wrapper->GetClient();
     int64_t _return;
     try {
-      _return = user_client->GetUserId(req_id, user_name, writer_text_map);
+      json req_jso = {
+          {"req_id", req_id},
+          {"user_name", user_name},
+          {"carrier", writer_text_map},
+      };
+      auto res = user_client->PostJson("/GetUserId", req_jso);
+      _return = res["user_id"].get<int64_t>();
     } catch (...) {
-      _user_service_client_pool->Remove(user_client_wrapper);
+      _user_service_client_pool->Remove(user_client);
       LOG(error) << "Failed to get user_id from user-service";
       throw;
     }
-    _user_service_client_pool->Keepalive(user_client_wrapper);
+    _user_service_client_pool->Keepalive(user_client);
     return _return;
   });
 
   std::future<int64_t> followee_id_future =
       std::async(std::launch::async, [&]() {
-        auto user_client_wrapper = _user_service_client_pool->Pop();
-        if (!user_client_wrapper) {
-          ServiceException se;
-          se.errorCode = ErrorCode::SE_THRIFT_CONN_ERROR;
-          se.message = "Failed to connect to social-graph-service";
-          throw se;
+        auto user_client = _user_service_client_pool->Pop();
+        if (!user_client) {
+          LOG(error) << "Failed to connect to user-service";
+          throw std::runtime_error("Failed to connect to user-service");
         }
-        auto user_client = user_client_wrapper->GetClient();
         int64_t _return;
         try {
-          _return =
-              user_client->GetUserId(req_id, followee_name, writer_text_map);
+          json req_jso = {
+              {"req_id", req_id},
+              {"user_name", user_name},
+              {"carrier", writer_text_map},
+          };
+          auto res = user_client->PostJson("/GetUserId", req_jso);
+          _return = res["user_id"].get<int64_t>();
         } catch (...) {
-          _user_service_client_pool->Remove(user_client_wrapper);
+          _user_service_client_pool->Remove(user_client);
           LOG(error) << "Failed to get user_id from user-service";
           throw;
         }
-        _user_service_client_pool->Keepalive(user_client_wrapper);
+        _user_service_client_pool->Keepalive(user_client);
         return _return;
       });
 

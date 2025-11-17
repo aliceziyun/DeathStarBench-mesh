@@ -1,22 +1,17 @@
 #include <signal.h>
-#include <thrift/protocol/TBinaryProtocol.h>
-#include <thrift/server/TThreadedServer.h>
-#include <thrift/transport/TBufferTransports.h>
-#include <thrift/transport/TServerSocket.h>
 
 #include <boost/program_options.hpp>
+#include <nlohmann/json.hpp>
 
 #include "../utils.h"
 #include "../utils_mongodb.h"
 #include "../utils_redis.h"
-#include "../utils_thrift.h"
+#include "../logger.h"
+#include "../tracing.h"
+#include "../ClientPool.h"
 #include "SocialGraphHandler.h"
 
 using json = nlohmann::json;
-using apache::thrift::protocol::TBinaryProtocolFactory;
-using apache::thrift::server::TThreadedServer;
-using apache::thrift::transport::TFramedTransportFactory;
-using apache::thrift::transport::TServerSocket;
 using namespace social_network;
 
 void sigintHandler(int sig) { exit(EXIT_SUCCESS); }
@@ -81,9 +76,9 @@ int main(int argc, char *argv[]) {
       exit(EXIT_FAILURE);
   }
 
-  ClientPool<ThriftClient<UserServiceClient>> user_client_pool(
+  ClientPool<HttpClientWrapper> user_client_pool(
       "social-graph", user_addr, user_port, 0, user_conns, user_timeout,
-      user_keepalive, config_json);
+      user_keepalive);
 
   mongoc_client_t *mongodb_client = mongoc_client_pool_pop(mongodb_client_pool);
   if (!mongodb_client) {
@@ -100,47 +95,342 @@ int main(int argc, char *argv[]) {
   }
   mongoc_client_pool_push(mongodb_client_pool, mongodb_client);
 
-  std::shared_ptr<TServerSocket> server_socket =
-      get_server_socket(config_json, "0.0.0.0", port);
+  httplib::Server server;
 
   if (redis_cluster_flag || redis_cluster_config_flag) {
     RedisCluster redis_cluster_client_pool =
         init_redis_cluster_client_pool(config_json, "social-graph");
-    TThreadedServer server(
-        std::make_shared<SocialGraphServiceProcessor>(
-            std::make_shared<SocialGraphHandler>(mongodb_client_pool,
-                                                 &redis_cluster_client_pool,
-                                                 &user_client_pool)),
-        server_socket, std::make_shared<TFramedTransportFactory>(),
-        std::make_shared<TBinaryProtocolFactory>());
+    SocialGraphHandler handler(mongodb_client_pool, &redis_cluster_client_pool,
+                               &user_client_pool);
+
+    server.Post("/GetFollowers", [&](const httplib::Request &req, httplib::Response &res) {
+      try {
+        auto j = json::parse(req.body);
+        int64_t req_id = j["req_id"];
+        int64_t user_id = j["user_id"];
+        std::map<std::string, std::string> carrier = j["carrier"];
+        std::vector<int64_t> followers_id;
+        handler.GetFollowers(followers_id, req_id, user_id, carrier);
+        res.set_content(json({{"followers_id", followers_id}}).dump(), "application/json");
+      } catch (std::exception &e) {
+        res.status = 500;
+        res.set_content("{\"error\":\"exception\"}", "application/json");
+      }
+    });
+
+    server.Post("/GetFollowees", [&](const httplib::Request &req, httplib::Response &res) {
+      try {
+        auto j = json::parse(req.body);
+        int64_t req_id = j["req_id"];
+        int64_t user_id = j["user_id"];
+        std::map<std::string, std::string> carrier = j["carrier"];
+        std::vector<int64_t> followees_id;
+        handler.GetFollowees(followees_id, req_id, user_id, carrier);
+        res.set_content(json({{"followees_id", followees_id}}).dump(), "application/json");
+      } catch (std::exception &e) {
+        res.status = 500;
+        res.set_content("{\"error\":\"exception\"}", "application/json");
+      }
+    });
+
+    server.Post("/Follow", [&](const httplib::Request &req, httplib::Response &res) {
+      try {
+        auto j = json::parse(req.body);
+        int64_t req_id = j["req_id"];
+        int64_t user_id = j["user_id"];
+        int64_t followee_id = j["followee_id"];
+        std::map<std::string, std::string> carrier = j["carrier"];
+        handler.Follow(req_id, user_id, followee_id, carrier);
+        res.set_content("{\"status\":\"ok\"}", "application/json");
+      } catch (std::exception &e) {
+        res.status = 500;
+        res.set_content("{\"error\":\"exception\"}", "application/json");
+      }
+    });
+
+    server.Post("/Unfollow", [&](const httplib::Request &req, httplib::Response &res) {
+      try {
+        auto j = json::parse(req.body);
+        int64_t req_id = j["req_id"];
+        int64_t user_id = j["user_id"];
+        int64_t followee_id = j["followee_id"];
+        std::map<std::string, std::string> carrier = j["carrier"];
+        handler.Unfollow(req_id, user_id, followee_id, carrier);
+        res.set_content("{\"status\":\"ok\"}", "application/json");
+      } catch (std::exception &e) {
+        res.status = 500;
+        res.set_content("{\"error\":\"exception\"}", "application/json");
+      }
+    });
+
+    server.Post("/FollowWithUsername", [&](const httplib::Request &req, httplib::Response &res) {
+      try {
+        auto j = json::parse(req.body);
+        int64_t req_id = j["req_id"];
+        std::string user_name = j["user_name"];
+        std::string followee_name = j["followee_name"];
+        std::map<std::string, std::string> carrier = j["carrier"];
+        handler.FollowWithUsername(req_id, user_name, followee_name, carrier);
+        res.set_content("{\"status\":\"ok\"}", "application/json");
+      } catch (std::exception &e) {
+        res.status = 500;
+        res.set_content("{\"error\":\"exception\"}", "application/json");
+      }
+    });
+
+    server.Post("/UnfollowWithUsername", [&](const httplib::Request &req, httplib::Response &res) {
+      try {
+        auto j = json::parse(req.body);
+        int64_t req_id = j["req_id"];
+        std::string user_name = j["user_name"];
+        std::string followee_name = j["followee_name"];
+        std::map<std::string, std::string> carrier = j["carrier"];
+        handler.UnfollowWithUsername(req_id, user_name, followee_name, carrier);
+        res.set_content("{\"status\":\"ok\"}", "application/json");
+      } catch (std::exception &e) {
+        res.status = 500;
+        res.set_content("{\"error\":\"exception\"}", "application/json");
+      }
+    });
+
+    server.Post("/InsertUser", [&](const httplib::Request &req, httplib::Response &res) {
+      try {
+        auto j = json::parse(req.body);
+        int64_t req_id = j["req_id"];
+        int64_t user_id = j["user_id"];
+        std::map<std::string, std::string> carrier = j["carrier"];
+        handler.InsertUser(req_id, user_id, carrier);
+        res.set_content("{\"status\":\"ok\"}", "application/json");
+      } catch (std::exception &e) {
+        res.status = 500;
+        res.set_content("{\"error\":\"exception\"}", "application/json");
+      }
+    });
+
     LOG(info) << "Starting the social-graph-service server with Redis Cluster support...";
-    server.serve();
-  }
-  
-  else if (redis_replica_config_flag) {
-      Redis redis_replica_client_pool = init_redis_replica_client_pool(config_json, "redis-replica");
-      Redis redis_primary_client_pool = init_redis_replica_client_pool(config_json, "redis-primary");
+    server.listen("0.0.0.0", port);
+  } else if (redis_replica_config_flag) {
+    Redis redis_replica_client_pool = init_redis_replica_client_pool(config_json, "redis-replica");
+    Redis redis_primary_client_pool = init_redis_replica_client_pool(config_json, "redis-primary");
 
-      TThreadedServer server(
-          std::make_shared<SocialGraphServiceProcessor>(
-              std::make_shared<SocialGraphHandler>(
-                  mongodb_client_pool, &redis_replica_client_pool, &redis_primary_client_pool, &user_client_pool)),
-          server_socket, std::make_shared<TFramedTransportFactory>(),
-          std::make_shared<TBinaryProtocolFactory>());
-      LOG(info) << "Starting the social-graph-service server with Redis replica support";
-      server.serve();
-  }
+    SocialGraphHandler handler(
+        mongodb_client_pool, &redis_replica_client_pool, &redis_primary_client_pool, &user_client_pool);
 
-  else {
-    Redis redis_client_pool =
-        init_redis_client_pool(config_json, "social-graph");
-    TThreadedServer server(
-        std::make_shared<SocialGraphServiceProcessor>(
-            std::make_shared<SocialGraphHandler>(
-                mongodb_client_pool, &redis_client_pool, &user_client_pool)),
-        server_socket, std::make_shared<TFramedTransportFactory>(),
-        std::make_shared<TBinaryProtocolFactory>());
+    server.Post("/GetFollowers", [&](const httplib::Request &req, httplib::Response &res) {
+      try {
+        auto j = json::parse(req.body);
+        int64_t req_id = j["req_id"];
+        int64_t user_id = j["user_id"];
+        std::map<std::string, std::string> carrier = j["carrier"];
+        std::vector<int64_t> followers_id;
+        handler.GetFollowers(followers_id, req_id, user_id, carrier);
+        res.set_content(json({{"followers_id", followers_id}}).dump(), "application/json");
+      } catch (std::exception &e) {
+        res.status = 500;
+        res.set_content("{\"error\":\"exception\"}", "application/json");
+      }
+    });
+
+    server.Post("/GetFollowees", [&](const httplib::Request &req, httplib::Response &res) {
+      try {
+        auto j = json::parse(req.body);
+        int64_t req_id = j["req_id"];
+        int64_t user_id = j["user_id"];
+        std::map<std::string, std::string> carrier = j["carrier"];
+        std::vector<int64_t> followees_id;
+        handler.GetFollowees(followees_id, req_id, user_id, carrier);
+        res.set_content(json({{"followees_id", followees_id}}).dump(), "application/json");
+      } catch (std::exception &e) {
+        res.status = 500;
+        res.set_content("{\"error\":\"exception\"}", "application/json");
+      }
+    });
+
+    server.Post("/Follow", [&](const httplib::Request &req, httplib::Response &res) {
+      try {
+        auto j = json::parse(req.body);
+        int64_t req_id = j["req_id"];
+        int64_t user_id = j["user_id"];
+        int64_t followee_id = j["followee_id"];
+        std::map<std::string, std::string> carrier = j["carrier"];
+        handler.Follow(req_id, user_id, followee_id, carrier);
+        res.set_content("{\"status\":\"ok\"}", "application/json");
+      } catch (std::exception &e) {
+        res.status = 500;
+        res.set_content("{\"error\":\"exception\"}", "application/json");
+      }
+    });
+
+    server.Post("/Unfollow", [&](const httplib::Request &req, httplib::Response &res) {
+      try {
+        auto j = json::parse(req.body);
+        int64_t req_id = j["req_id"];
+        int64_t user_id = j["user_id"];
+        int64_t followee_id = j["followee_id"];
+        std::map<std::string, std::string> carrier = j["carrier"];
+        handler.Unfollow(req_id, user_id, followee_id, carrier);
+        res.set_content("{\"status\":\"ok\"}", "application/json");
+      } catch (std::exception &e) {
+        res.status = 500;
+        res.set_content("{\"error\":\"exception\"}", "application/json");
+      }
+    });
+
+    server.Post("/FollowWithUsername", [&](const httplib::Request &req, httplib::Response &res) {
+      try {
+        auto j = json::parse(req.body);
+        int64_t req_id = j["req_id"];
+        std::string user_name = j["user_name"];
+        std::string followee_name = j["followee_name"];
+        std::map<std::string, std::string> carrier = j["carrier"];
+        handler.FollowWithUsername(req_id, user_name, followee_name, carrier);
+        res.set_content("{\"status\":\"ok\"}", "application/json");
+      } catch (std::exception &e) {
+        res.status = 500;
+        res.set_content("{\"error\":\"exception\"}", "application/json");
+      }
+    });
+
+    server.Post("/UnfollowWithUsername", [&](const httplib::Request &req, httplib::Response &res) {
+      try {
+        auto j = json::parse(req.body);
+        int64_t req_id = j["req_id"];
+        std::string user_name = j["user_name"];
+        std::string followee_name = j["followee_name"];
+        std::map<std::string, std::string> carrier = j["carrier"];
+        handler.UnfollowWithUsername(req_id, user_name, followee_name, carrier);
+        res.set_content("{\"status\":\"ok\"}", "application/json");
+      } catch (std::exception &e) {
+        res.status = 500;
+        res.set_content("{\"error\":\"exception\"}", "application/json");
+      }
+    });
+
+    server.Post("/InsertUser", [&](const httplib::Request &req, httplib::Response &res) {
+      try {
+        auto j = json::parse(req.body);
+        int64_t req_id = j["req_id"];
+        int64_t user_id = j["user_id"];
+        std::map<std::string, std::string> carrier = j["carrier"];
+        handler.InsertUser(req_id, user_id, carrier);
+        res.set_content("{\"status\":\"ok\"}", "application/json");
+      } catch (std::exception &e) {
+        res.status = 500;
+        res.set_content("{\"error\":\"exception\"}", "application/json");
+      }
+    });
+
+    LOG(info) << "Starting the social-graph-service server with Redis replica support";
+    server.listen("0.0.0.0", port);
+  } else {
+    Redis redis_client_pool = init_redis_client_pool(config_json, "social-graph");
+    SocialGraphHandler handler(mongodb_client_pool, &redis_client_pool, &user_client_pool);
+
+    server.Post("/GetFollowers", [&](const httplib::Request &req, httplib::Response &res) {
+      try {
+        auto j = json::parse(req.body);
+        int64_t req_id = j["req_id"];
+        int64_t user_id = j["user_id"];
+        std::map<std::string, std::string> carrier = j["carrier"];
+        std::vector<int64_t> followers_id;
+        handler.GetFollowers(followers_id, req_id, user_id, carrier);
+        res.set_content(json({{"followers_id", followers_id}}).dump(), "application/json");
+      } catch (std::exception &e) {
+        res.status = 500;
+        res.set_content("{\"error\":\"exception\"}", "application/json");
+      }
+    });
+
+    server.Post("/GetFollowees", [&](const httplib::Request &req, httplib::Response &res) {
+      try {
+        auto j = json::parse(req.body);
+        int64_t req_id = j["req_id"];
+        int64_t user_id = j["user_id"];
+        std::map<std::string, std::string> carrier = j["carrier"];
+        std::vector<int64_t> followees_id;
+        handler.GetFollowees(followees_id, req_id, user_id, carrier);
+        res.set_content(json({{"followees_id", followees_id}}).dump(), "application/json");
+      } catch (std::exception &e) {
+        res.status = 500;
+        res.set_content("{\"error\":\"exception\"}", "application/json");
+      }
+    });
+
+    server.Post("/Follow", [&](const httplib::Request &req, httplib::Response &res) {
+      try {
+        auto j = json::parse(req.body);
+        int64_t req_id = j["req_id"];
+        int64_t user_id = j["user_id"];
+        int64_t followee_id = j["followee_id"];
+        std::map<std::string, std::string> carrier = j["carrier"];
+        handler.Follow(req_id, user_id, followee_id, carrier);
+        res.set_content("{\"status\":\"ok\"}", "application/json");
+      } catch (std::exception &e) {
+        res.status = 500;
+        res.set_content("{\"error\":\"exception\"}", "application/json");
+      }
+    });
+
+    server.Post("/Unfollow", [&](const httplib::Request &req, httplib::Response &res) {
+      try {
+        auto j = json::parse(req.body);
+        int64_t req_id = j["req_id"];
+        int64_t user_id = j["user_id"];
+        int64_t followee_id = j["followee_id"];
+        std::map<std::string, std::string> carrier = j["carrier"];
+        handler.Unfollow(req_id, user_id, followee_id, carrier);
+        res.set_content("{\"status\":\"ok\"}", "application/json");
+      } catch (std::exception &e) {
+        res.status = 500;
+        res.set_content("{\"error\":\"exception\"}", "application/json");
+      }
+    });
+
+    server.Post("/FollowWithUsername", [&](const httplib::Request &req, httplib::Response &res) {
+      try {
+        auto j = json::parse(req.body);
+        int64_t req_id = j["req_id"];
+        std::string user_name = j["user_name"];
+        std::string followee_name = j["followee_name"];
+        std::map<std::string, std::string> carrier = j["carrier"];
+        handler.FollowWithUsername(req_id, user_name, followee_name, carrier);
+        res.set_content("{\"status\":\"ok\"}", "application/json");
+      } catch (std::exception &e) {
+        res.status = 500;
+        res.set_content("{\"error\":\"exception\"}", "application/json");
+      }
+    });
+
+    server.Post("/UnfollowWithUsername", [&](const httplib::Request &req, httplib::Response &res) {
+      try {
+        auto j = json::parse(req.body);
+        int64_t req_id = j["req_id"];
+        std::string user_name = j["user_name"];
+        std::string followee_name = j["followee_name"];
+        std::map<std::string, std::string> carrier = j["carrier"];
+        handler.UnfollowWithUsername(req_id, user_name, followee_name, carrier);
+        res.set_content("{\"status\":\"ok\"}", "application/json");
+      } catch (std::exception &e) {
+        res.status = 500;
+        res.set_content("{\"error\":\"exception\"}", "application/json");
+      }
+    });
+
+    server.Post("/InsertUser", [&](const httplib::Request &req, httplib::Response &res) {
+      try {
+        auto j = json::parse(req.body);
+        int64_t req_id = j["req_id"];
+        int64_t user_id = j["user_id"];
+        std::map<std::string, std::string> carrier = j["carrier"];
+        handler.InsertUser(req_id, user_id, carrier);
+        res.set_content("{\"status\":\"ok\"}", "application/json");
+      } catch (std::exception &e) {
+        res.status = 500;
+        res.set_content("{\"error\":\"exception\"}", "application/json");
+      }
+    });
+
     LOG(info) << "Starting the social-graph-service server ...";
-    server.serve();
+    server.listen("0.0.0.0", port);
   }
 }
