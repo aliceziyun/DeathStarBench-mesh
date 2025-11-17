@@ -10,8 +10,7 @@
 #include <libmemcached/util.h>
 #include <bson/bson.h>
 
-#include "../../gen-cpp/UrlShortenService.h"
-#include "../../gen-cpp/social_network_types.h"
+#include "../social_network_types.h"
 #include "../logger.h"
 #include "../tracing.h"
 
@@ -19,18 +18,18 @@
 
 namespace social_network {
 
-class UrlShortenHandler : public UrlShortenServiceIf {
+class UrlShortenHandler {
  public:
   UrlShortenHandler(memcached_pool_st *, mongoc_client_pool_t *, std::mutex *);
-  ~UrlShortenHandler() override = default;
+  ~UrlShortenHandler() = default;
 
   void ComposeUrls(std::vector<Url> &, int64_t,
       const std::vector<std::string> &,
-      const std::map<std::string, std::string> &) override;
+    const std::map<std::string, std::string> &);
 
   void GetExtendedUrls(std::vector<std::string> &, int64_t,
                        const std::vector<std::string> &,
-                       const std::map<std::string, std::string> &) override ;
+             const std::map<std::string, std::string> &);
 
  private:
   memcached_pool_st *_memcached_client_pool;
@@ -98,19 +97,15 @@ void UrlShortenHandler::ComposeUrls(
           mongoc_client_t *mongodb_client = mongoc_client_pool_pop(
               _mongodb_client_pool);
           if (!mongodb_client) {
-            ServiceException se;
-            se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-            se.message = "Failed to pop a client from MongoDB pool";
-            throw se;
+            LOG(error) << "Failed to pop a client from MongoDB pool";
+            throw std::runtime_error("MongoDB pool pop failed");
           }
           auto collection = mongoc_client_get_collection(
               mongodb_client, "url-shorten", "url-shorten");
           if (!collection) {
-            ServiceException se;
-            se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-            se.message = "Failed to create collection user from DB user";
+            LOG(error) << "Failed to get collection url-shorten";
             mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-            throw se;
+            throw std::runtime_error("MongoDB collection error");
           }
 
           auto mongo_span = opentracing::Tracer::Global()->StartSpan(
@@ -134,14 +129,11 @@ void UrlShortenHandler::ComposeUrls(
           ret = mongoc_bulk_operation_execute (bulk, &reply, &error);
           if (!ret) {
             LOG(error) << "MongoDB error: "<< error.message;
-            ServiceException se;
-            se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-            se.message = "Failed to insert urls to MongoDB";
             bson_destroy (&reply);
             mongoc_bulk_operation_destroy(bulk);
             mongoc_collection_destroy(collection);
             mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-            throw se;
+            throw std::runtime_error("Failed to insert urls to MongoDB");
           }
           bson_destroy (&reply);
           mongoc_bulk_operation_destroy(bulk);

@@ -6,23 +6,21 @@
 #include <libmemcached/util.h>
 #include <mongoc.h>
 
-#include "../../gen-cpp/UserMentionService.h"
-#include "../../gen-cpp/social_network_types.h"
-#include "../ClientPool.h"
+#include "../social_network_types.h"
 #include "../logger.h"
 #include "../tracing.h"
 #include "../utils.h"
 
 namespace social_network {
 
-class UserMentionHandler : public UserMentionServiceIf {
+class UserMentionHandler {
  public:
   UserMentionHandler(memcached_pool_st *, mongoc_client_pool_t *);
-  ~UserMentionHandler() override = default;
+  ~UserMentionHandler() = default;
 
   void ComposeUserMentions(std::vector<UserMention> &_return, int64_t,
                            const std::vector<std::string> &,
-                           const std::map<std::string, std::string> &) override;
+                           const std::map<std::string, std::string> &);
 
  private:
   memcached_pool_st *_memcached_client_pool;
@@ -62,10 +60,8 @@ void UserMentionHandler::ComposeUserMentions(
     memcached_return_t rc;
     auto client = memcached_pool_pop(_memcached_client_pool, true, &rc);
     if (!client) {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_MEMCACHED_ERROR;
-      se.message = "Failed to pop a client from memcached pool";
-      throw se;
+      LOG(error) << "Failed to pop a client from memcached pool";
+      throw std::runtime_error("memcached pop failed");
     }
 
     char **keys;
@@ -88,12 +84,9 @@ void UserMentionHandler::ComposeUserMentions(
     if (rc != MEMCACHED_SUCCESS) {
       LOG(error) << "Cannot get usernames of request " << req_id << ": "
                  << memcached_strerror(client, rc);
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_MEMCACHED_ERROR;
-      se.message = memcached_strerror(client, rc);
       memcached_pool_push(_memcached_client_pool, client);
       get_span->Finish();
-      throw se;
+      throw std::runtime_error("memcached mget failed");
     }
 
     char return_key[MEMCACHED_MAX_KEY];
@@ -115,12 +108,8 @@ void UserMentionHandler::ComposeUserMentions(
         memcached_quit(client);
         memcached_pool_push(_memcached_client_pool, client);
         LOG(error) << "Cannot get components of request " << req_id;
-        ServiceException se;
-        se.errorCode = ErrorCode::SE_MEMCACHED_ERROR;
-        se.message =
-            "Cannot get usernames of request " + std::to_string(req_id);
         get_span->Finish();
-        throw se;
+        throw std::runtime_error("memcached fetch failed");
       }
       UserMention new_user_mention;
       std::string username(return_key, return_key + return_key_length);
@@ -147,20 +136,16 @@ void UserMentionHandler::ComposeUserMentions(
       mongoc_client_t *mongodb_client =
           mongoc_client_pool_pop(_mongodb_client_pool);
       if (!mongodb_client) {
-        ServiceException se;
-        se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-        se.message = "Failed to pop a client from MongoDB pool";
-        throw se;
+        LOG(error) << "Failed to pop a client from MongoDB pool";
+        throw std::runtime_error("mongodb pop failed");
       }
 
       auto collection =
           mongoc_client_get_collection(mongodb_client, "user", "user");
       if (!collection) {
-        ServiceException se;
-        se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-        se.message = "Failed to create collection user from DB user";
+        LOG(error) << "Failed to get collection user from DB user";
         mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-        throw se;
+        throw std::runtime_error("mongodb collection error");
       }
 
       bson_t *query = bson_new();
@@ -193,28 +178,24 @@ void UserMentionHandler::ComposeUserMentions(
         if (bson_iter_init_find(&iter, doc, "user_id")) {
           new_user_mention.user_id = bson_iter_value(&iter)->value.v_int64;
         } else {
-          ServiceException se;
-          se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-          se.message = "Attribute of MongoDB item is not complete";
+          LOG(error) << "MongoDB item missing user_id";
           bson_destroy(query);
           mongoc_cursor_destroy(cursor);
           mongoc_collection_destroy(collection);
           mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
           find_span->Finish();
-          throw se;
+          throw std::runtime_error("mongodb item incomplete");
         }
         if (bson_iter_init_find(&iter, doc, "username")) {
           new_user_mention.username = bson_iter_value(&iter)->value.v_utf8.str;
         } else {
-          ServiceException se;
-          se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-          se.message = "Attribute of MongoDB item is not complete";
+          LOG(error) << "MongoDB item missing username";
           bson_destroy(query);
           mongoc_cursor_destroy(cursor);
           mongoc_collection_destroy(collection);
           mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
           find_span->Finish();
-          throw se;
+          throw std::runtime_error("mongodb item incomplete");
         }
         user_mentions.emplace_back(new_user_mention);
       }

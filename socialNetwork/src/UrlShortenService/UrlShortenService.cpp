@@ -1,21 +1,17 @@
 #include <signal.h>
-#include <thrift/protocol/TBinaryProtocol.h>
-#include <thrift/server/TThreadedServer.h>
-#include <thrift/transport/TBufferTransports.h>
-#include <thrift/transport/TServerSocket.h>
+
+#include <nlohmann/json.hpp>
 
 #include "../utils.h"
 #include "../utils_memcached.h"
 #include "../utils_mongodb.h"
-#include "../utils_thrift.h"
+#include "../logger.h"
+#include "../tracing.h"
+#include "../HttpClientWrapper.h"  // for httplib::Server
 #include "UrlShortenHandler.h"
-#include "nlohmann/json.hpp"
 
-using apache::thrift::protocol::TBinaryProtocolFactory;
-using apache::thrift::server::TThreadedServer;
-using apache::thrift::transport::TFramedTransportFactory;
-using apache::thrift::transport::TServerSocket;
 using namespace social_network;
+using json = nlohmann::json;
 
 static memcached_pool_st* memcached_client_pool;
 static mongoc_client_pool_t* mongodb_client_pool;
@@ -69,15 +65,31 @@ int main(int argc, char* argv[]) {
   mongoc_client_pool_push(mongodb_client_pool, mongodb_client);
 
   std::mutex thread_lock;
-  std::shared_ptr<TServerSocket> server_socket = get_server_socket(config_json, "0.0.0.0", port);
-  TThreadedServer server(
-      std::make_shared<UrlShortenServiceProcessor>(
-          std::make_shared<UrlShortenHandler>(
-              memcached_client_pool, mongodb_client_pool, &thread_lock)),
-      server_socket,
-      std::make_shared<TFramedTransportFactory>(),
-      std::make_shared<TBinaryProtocolFactory>());
+  UrlShortenHandler handler(memcached_client_pool, mongodb_client_pool, &thread_lock);
+  httplib::Server server;
 
-  LOG(info) << "Starting the url-shorten-service server...";
-  server.serve();
+  server.Post("/ComposeUrls", [&](const httplib::Request &req, httplib::Response &res) {
+    try {
+      auto j = json::parse(req.body);
+      int64_t req_id = j["req_id"].get<int64_t>();
+      std::vector<std::string> urls = j["urls"].get<std::vector<std::string>>();
+      std::map<std::string, std::string> carrier;
+      if (j.contains("carrier")) carrier = j["carrier"].get<std::map<std::string, std::string>>();
+
+      std::vector<Url> out;
+      handler.ComposeUrls(out, req_id, urls, carrier);
+      json resp = json::object();
+      resp["urls"] = json::array();
+      for (auto &u : out) {
+        resp["urls"].push_back({{"shortened_url", u.shortened_url}, {"expanded_url", u.expanded_url}});
+      }
+      res.set_content(resp.dump(), "application/json");
+    } catch (const std::exception &e) {
+      res.status = 500;
+      res.set_content(json({{"error", e.what()}}).dump(), "application/json");
+    }
+  });
+
+  LOG(info) << "Starting the url-shorten-service HTTP server...";
+  server.listen("0.0.0.0", port);
 }
