@@ -46,7 +46,7 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  SetUpTracer("config/jaeger-config.yml", "user-timeline-service");
+  // SetUpTracer("config/jaeger-config.yml", "user-timeline-service");
 
   json config_json;
   if (load_config_file("config/service-config.json", &config_json) != 0) {
