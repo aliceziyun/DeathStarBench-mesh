@@ -8,38 +8,39 @@
 #include <future>
 #include <iostream>
 #include <string>
+#include <unordered_map>
+#include <nlohmann/json.hpp>
 
-#include "../../gen-cpp/PostStorageService.h"
-#include "../../gen-cpp/UserTimelineService.h"
 #include "../ClientPool.h"
-#include "../ThriftClient.h"
+#include "../HttpClientWrapper.h"
 #include "../logger.h"
 #include "../tracing.h"
+#include "../social_network_types.h"
 
 using namespace sw::redis;
 
 namespace social_network {
 
-class UserTimelineHandler : public UserTimelineServiceIf {
+class UserTimelineHandler {
  public:
   UserTimelineHandler(Redis *, mongoc_client_pool_t *,
-                      ClientPool<ThriftClient<PostStorageServiceClient>> *);
+                      ClientPool<HttpClientWrapper> *);
 
   UserTimelineHandler(Redis *, Redis *, mongoc_client_pool_t *,
-      ClientPool<ThriftClient<PostStorageServiceClient>> *);
+      ClientPool<HttpClientWrapper> *);
 
   UserTimelineHandler(RedisCluster *, mongoc_client_pool_t *,
-                      ClientPool<ThriftClient<PostStorageServiceClient>> *);
-  ~UserTimelineHandler() override = default;
+                      ClientPool<HttpClientWrapper> *);
+  ~UserTimelineHandler() = default;
 
   bool IsRedisReplicationEnabled();
 
   void WriteUserTimeline(
-      int64_t req_id, int64_t post_id, int64_t user_id, int64_t timestamp,
-      const std::map<std::string, std::string> &carrier) override;
+    int64_t req_id, int64_t post_id, int64_t user_id, int64_t timestamp,
+    const std::map<std::string, std::string> &carrier);
 
   void ReadUserTimeline(std::vector<Post> &, int64_t, int64_t, int, int,
-                        const std::map<std::string, std::string> &) override;
+            const std::map<std::string, std::string> &);
 
  private:
   Redis *_redis_client_pool;
@@ -47,12 +48,12 @@ class UserTimelineHandler : public UserTimelineServiceIf {
   Redis *_redis_primary_pool;
   RedisCluster *_redis_cluster_client_pool;
   mongoc_client_pool_t *_mongodb_client_pool;
-  ClientPool<ThriftClient<PostStorageServiceClient>> *_post_client_pool;
+  ClientPool<HttpClientWrapper> *_post_client_pool;
 };
 
 UserTimelineHandler::UserTimelineHandler(
     Redis *redis_pool, mongoc_client_pool_t *mongodb_pool,
-    ClientPool<ThriftClient<PostStorageServiceClient>> *post_client_pool) {
+    ClientPool<HttpClientWrapper> *post_client_pool) {
   _redis_client_pool = redis_pool;
   _redis_replica_pool = nullptr;
   _redis_primary_pool = nullptr;
@@ -63,7 +64,7 @@ UserTimelineHandler::UserTimelineHandler(
 
 UserTimelineHandler::UserTimelineHandler(
     Redis* redis_replica_pool, Redis* redis_primary_pool, mongoc_client_pool_t* mongodb_pool,
-    ClientPool<ThriftClient<PostStorageServiceClient>>* post_client_pool) {
+    ClientPool<HttpClientWrapper>* post_client_pool) {
     _redis_client_pool = nullptr;
     _redis_replica_pool = redis_replica_pool;
     _redis_primary_pool = redis_primary_pool;
@@ -74,7 +75,7 @@ UserTimelineHandler::UserTimelineHandler(
 
 UserTimelineHandler::UserTimelineHandler(
     RedisCluster *redis_pool, mongoc_client_pool_t *mongodb_pool,
-    ClientPool<ThriftClient<PostStorageServiceClient>> *post_client_pool) {
+    ClientPool<HttpClientWrapper> *post_client_pool) {
   _redis_cluster_client_pool = redis_pool;
   _redis_replica_pool = nullptr;
   _redis_primary_pool = nullptr;
@@ -102,19 +103,14 @@ void UserTimelineHandler::WriteUserTimeline(
   mongoc_client_t *mongodb_client =
       mongoc_client_pool_pop(_mongodb_client_pool);
   if (!mongodb_client) {
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-    se.message = "Failed to pop a client from MongoDB pool";
-    throw se;
+    throw std::runtime_error("Failed to pop a client from MongoDB pool");
   }
   auto collection = mongoc_client_get_collection(
       mongodb_client, "user-timeline", "user-timeline");
   if (!collection) {
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-    se.message = "Failed to create collection user-timeline from MongoDB";
     mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-    throw se;
+    throw std::runtime_error(
+        "Failed to create collection user-timeline from MongoDB");
   }
   bson_t *query = bson_new();
 
@@ -141,15 +137,12 @@ void UserTimelineHandler::WriteUserTimeline(
     if (!updated) {
       LOG(error) << "Failed to update user-timeline for user " << user_id
                  << " to MongoDB: " << error.message;
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-      se.message = error.message;
       bson_destroy(update);
       bson_destroy(query);
       bson_destroy(&reply);
       mongoc_collection_destroy(collection);
       mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-      throw se;
+      throw std::runtime_error(error.message);
     }
   }
 
@@ -177,7 +170,7 @@ void UserTimelineHandler::WriteUserTimeline(
 
   } catch (const Error &err) {
     LOG(error) << err.what();
-    throw err;
+    throw;
   }
   redis_span->Finish();
   span->Finish();
@@ -234,18 +227,13 @@ void UserTimelineHandler::ReadUserTimeline(
     mongoc_client_t *mongodb_client =
         mongoc_client_pool_pop(_mongodb_client_pool);
     if (!mongodb_client) {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-      se.message = "Failed to pop a client from MongoDB pool";
-      throw se;
+      throw std::runtime_error("Failed to pop a client from MongoDB pool");
     }
     auto collection = mongoc_client_get_collection(
         mongodb_client, "user-timeline", "user-timeline");
     if (!collection) {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-      se.message = "Failed to create collection user-timeline from MongoDB";
-      throw se;
+      throw std::runtime_error(
+          "Failed to create collection user-timeline from MongoDB");
     }
 
     bson_t *query = BCON_NEW("user_id", BCON_INT64(user_id));
@@ -302,24 +290,53 @@ void UserTimelineHandler::ReadUserTimeline(
 
   std::future<std::vector<Post>> post_future =
       std::async(std::launch::async, [&]() {
-        auto post_client_wrapper = _post_client_pool->Pop();
-        if (!post_client_wrapper) {
-          ServiceException se;
-          se.errorCode = ErrorCode::SE_THRIFT_CONN_ERROR;
-          se.message = "Failed to connect to post-storage-service";
-          throw se;
+        auto post_client = _post_client_pool->Pop();
+        if (!post_client) {
+          LOG(error) << "Failed to connect to post-storage-service";
+          throw std::runtime_error(
+              "Failed to connect to post-storage-service");
         }
         std::vector<Post> _return_posts;
-        auto post_client = post_client_wrapper->GetClient();
         try {
-          post_client->ReadPosts(_return_posts, req_id, post_ids,
-                                 writer_text_map);
+          nlohmann::json req_json = {
+              {"req_id", req_id}, {"post_ids", post_ids},
+              {"carrier", writer_text_map}};
+          auto res = post_client->PostJson("/ReadPosts", req_json);
+          for (auto &item : res["posts"]) {
+            Post p;
+            p.req_id = item["req_id"];
+            p.timestamp = item["timestamp"];
+            p.post_id = item["post_id"];
+            p.creator.user_id = item["creator"]["user_id"];
+            p.creator.username = item["creator"]["username"];
+            p.post_type = static_cast<PostType::type>((int)item["post_type"]);
+            p.text = item["text"];
+            for (auto &m : item["media"]) {
+              Media media;
+              media.media_id = m["media_id"];
+              media.media_type = m["media_type"];
+              p.media.emplace_back(media);
+            }
+            for (auto &um : item["user_mentions"]) {
+              UserMention u;
+              u.user_id = um["user_id"];
+              u.username = um["username"];
+              p.user_mentions.emplace_back(u);
+            }
+            for (auto &u : item["urls"]) {
+              Url url;
+              url.shortened_url = u["shortened_url"];
+              url.expanded_url = u["expanded_url"];
+              p.urls.emplace_back(url);
+            }
+            _return_posts.emplace_back(std::move(p));
+          }
         } catch (...) {
-          _post_client_pool->Remove(post_client_wrapper);
+          _post_client_pool->Remove(post_client);
           LOG(error) << "Failed to read posts from post-storage-service";
           throw;
         }
-        _post_client_pool->Keepalive(post_client_wrapper);
+        _post_client_pool->Keepalive(post_client);
         return _return_posts;
       });
 
@@ -344,7 +361,7 @@ void UserTimelineHandler::ReadUserTimeline(
 
     } catch (const Error &err) {
       LOG(error) << err.what();
-      throw err;
+      throw;
     }
     redis_update_span->Finish();
   }

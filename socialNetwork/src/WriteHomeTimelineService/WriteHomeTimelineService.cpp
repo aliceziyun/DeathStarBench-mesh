@@ -5,13 +5,13 @@
 #include <set>
 #include <sstream>
 #include <thread>
+#include <nlohmann/json.hpp>
 
-#include "../../gen-cpp/SocialGraphService.h"
-#include "../../gen-cpp/social_network_types.h"
+#include "../social_network_types.h"
 #include "../AmqpLibeventHandler.h"
 #include "../ClientPool.h"
 #include "../RedisClient.h"
-#include "../ThriftClient.h"
+#include "../HttpClientWrapper.h"
 #include "../logger.h"
 #include "../tracing.h"
 #include "../utils.h"
@@ -20,8 +20,7 @@ using namespace social_network;
 
 static std::exception_ptr _teptr;
 static ClientPool<RedisClient> *_redis_client_pool;
-static ClientPool<ThriftClient<SocialGraphServiceClient>>
-    *_social_graph_client_pool;
+static ClientPool<HttpClientWrapper> *_social_graph_client_pool;
 
 void sigintHandler(int sig) { exit(EXIT_SUCCESS); }
 
@@ -56,24 +55,25 @@ void OnReceivedWorker(const AMQP::Message &msg) {
     TextMapWriter writer(writer_text_map);
     opentracing::Tracer::Global()->Inject(followers_span->context(), writer);
 
-    auto social_graph_client_wrapper = _social_graph_client_pool->Pop();
-    if (!social_graph_client_wrapper) {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_THRIFT_CONN_ERROR;
-      se.message = "Failed to connect to social-graph-service";
-      throw se;
+    auto social_graph_client = _social_graph_client_pool->Pop();
+    if (!social_graph_client) {
+      followers_span->Finish();
+      throw std::runtime_error("Failed to connect to social-graph-service");
     }
-    auto social_graph_client = social_graph_client_wrapper->GetClient();
     std::vector<int64_t> followers_id;
     try {
-      social_graph_client->GetFollowers(followers_id, req_id, user_id,
-                                        writer_text_map);
+      nlohmann::json req_json = {{"req_id", req_id},
+                                 {"user_id", user_id},
+                                 {"carrier", writer_text_map}};
+      auto res = social_graph_client->PostJson("/GetFollowers", req_json);
+      followers_id = res["followers_id"].get<std::vector<int64_t>>();
     } catch (...) {
-      LOG(error) << "Failed to get followers from social-network-service";
-      _social_graph_client_pool->Remove(social_graph_client_wrapper);
+      LOG(error) << "Failed to get followers from social-graph-service";
+      _social_graph_client_pool->Remove(social_graph_client);
+      followers_span->Finish();
       throw;
     }
-    _social_graph_client_pool->Keepalive(social_graph_client_wrapper);
+    _social_graph_client_pool->Keepalive(social_graph_client);
     followers_span->Finish();
 
     std::set<int64_t> followers_id_set(followers_id.begin(),
@@ -86,10 +86,7 @@ void OnReceivedWorker(const AMQP::Message &msg) {
         {opentracing::ChildOf(&span->context())});
     auto redis_client_wrapper = _redis_client_pool->Pop();
     if (!redis_client_wrapper) {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_REDIS_ERROR;
-      se.message = "Cannot connect to Redis server";
-      throw se;
+      throw std::runtime_error("Cannot connect to Redis server");
     }
     auto redis_client = redis_client_wrapper->GetClient();
     std::vector<std::string> options{"NX"};
@@ -184,12 +181,12 @@ int main(int argc, char *argv[]) {
 
   ClientPool<RedisClient> redis_client_pool("redis", redis_addr, redis_port, 0,
                                             redis_conns, redis_timeout,
-                                            redis_keepalive, config_json);
+                                            redis_keepalive);
 
-  ClientPool<ThriftClient<SocialGraphServiceClient>> social_graph_client_pool(
-      "social-graph-service", social_graph_service_addr,
-      social_graph_service_port, 0, social_graph_service_conns,
-      social_graph_service_timeout, social_graph_service_keepalive, config_json);
+  ClientPool<HttpClientWrapper> social_graph_client_pool(
+    "social-graph-service", social_graph_service_addr,
+    social_graph_service_port, 0, social_graph_service_conns,
+    social_graph_service_timeout, social_graph_service_keepalive);
 
   _redis_client_pool = &redis_client_pool;
   _social_graph_client_pool = &social_graph_client_pool;
