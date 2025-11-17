@@ -13,12 +13,10 @@
 #include <random>
 #include <string>
 
-#include "../../gen-cpp/SocialGraphService.h"
-#include "../../gen-cpp/UserService.h"
-#include "../../gen-cpp/social_network_types.h"
+#include "../social_network_types.h"
 #include "../../third_party/PicoSHA2/picosha2.h"
 #include "../ClientPool.h"
-#include "../ThriftClient.h"
+#include "../HttpClientWrapper.h"
 #include "../logger.h"
 #include "../tracing.h"
 
@@ -33,6 +31,7 @@ using std::chrono::milliseconds;
 using std::chrono::seconds;
 using std::chrono::system_clock;
 using namespace jwt::params;
+using json = nlohmann::json;
 
 static int64_t current_timestamp = -1;
 static int counter = 0;
@@ -67,29 +66,29 @@ std::string GenRandomString(const int len) {
   return s;
 }
 
-class UserHandler : public UserServiceIf {
+class UserHandler {
  public:
   UserHandler(std::mutex *, const std::string &, const std::string &,
               memcached_pool_st *, mongoc_client_pool_t *,
-              ClientPool<ThriftClient<SocialGraphServiceClient>> *);
-  ~UserHandler() override = default;
+        ClientPool<HttpClientWrapper> *);
+  ~UserHandler() = default;
   void RegisterUser(int64_t, const std::string &, const std::string &,
-                    const std::string &, const std::string &,
-                    const std::map<std::string, std::string> &) override;
+          const std::string &, const std::string &,
+          const std::map<std::string, std::string> &);
   void RegisterUserWithId(int64_t, const std::string &, const std::string &,
                           const std::string &, const std::string &, int64_t,
-                          const std::map<std::string, std::string> &) override;
+              const std::map<std::string, std::string> &);
 
   void ComposeCreatorWithUserId(
       Creator &, int64_t, int64_t, const std::string &,
-      const std::map<std::string, std::string> &) override;
+    const std::map<std::string, std::string> &);
   void ComposeCreatorWithUsername(
-      Creator &, int64_t, const std::string &,
-      const std::map<std::string, std::string> &) override;
+    Creator &, int64_t, const std::string &,
+    const std::map<std::string, std::string> &);
   void Login(std::string &, int64_t, const std::string &, const std::string &,
-             const std::map<std::string, std::string> &) override;
+       const std::map<std::string, std::string> &);
   int64_t GetUserId(int64_t, const std::string &,
-                    const std::map<std::string, std::string> &) override;
+          const std::map<std::string, std::string> &);
 
  private:
   std::string _machine_id;
@@ -97,15 +96,14 @@ class UserHandler : public UserServiceIf {
   std::mutex *_thread_lock;
   memcached_pool_st *_memcached_client_pool;
   mongoc_client_pool_t *_mongodb_client_pool;
-  ClientPool<ThriftClient<SocialGraphServiceClient>> *_social_graph_client_pool;
+  ClientPool<HttpClientWrapper> *_social_graph_client_pool;
 };
 
 UserHandler::UserHandler(std::mutex *thread_lock, const std::string &machine_id,
                          const std::string &secret,
                          memcached_pool_st *memcached_client_pool,
                          mongoc_client_pool_t *mongodb_client_pool,
-                         ClientPool<ThriftClient<SocialGraphServiceClient>>
-                             *social_graph_client_pool) {
+                         ClientPool<HttpClientWrapper> *social_graph_client_pool) {
   _thread_lock = thread_lock;
   _machine_id = machine_id;
   _memcached_client_pool = memcached_client_pool;
@@ -133,10 +131,7 @@ void UserHandler::RegisterUserWithId(
   mongoc_client_t *mongodb_client =
       mongoc_client_pool_pop(_mongodb_client_pool);
   if (!mongodb_client) {
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-    se.message = "Failed to pop a client from MongoDB pool";
-    throw se;
+    throw std::runtime_error("Failed to pop a client from MongoDB pool");
   }
   auto collection =
       mongoc_client_get_collection(mongodb_client, "user", "user");
@@ -155,20 +150,14 @@ void UserHandler::RegisterUserWithId(
     mongoc_cursor_destroy(cursor);
     mongoc_collection_destroy(collection);
     mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-    se.message = error.message;
-    throw se;
+    throw std::runtime_error(error.message);
   } else if (found) {
     LOG(warning) << "User " << username << " already existed.";
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_THRIFT_HANDLER_ERROR;
-    se.message = "User " + username + " already existed";
     bson_destroy(query);
     mongoc_cursor_destroy(cursor);
     mongoc_collection_destroy(collection);
     mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-    throw se;
+    throw std::runtime_error("User " + username + " already existed");
   } else {
     bson_t *new_doc = bson_new();
     BSON_APPEND_INT64(new_doc, "user_id", user_id);
@@ -187,15 +176,12 @@ void UserHandler::RegisterUserWithId(
                                       &error)) {
       LOG(error) << "Failed to insert user " << username
                  << " to MongoDB: " << error.message;
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_THRIFT_HANDLER_ERROR;
-      se.message =
-          "Failed to insert user " + username + " to MongoDB: " + error.message;
       bson_destroy(query);
       mongoc_cursor_destroy(cursor);
       mongoc_collection_destroy(collection);
       mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-      throw se;
+      throw std::runtime_error("Failed to insert user " + username +
+                               " to MongoDB: " + std::string(error.message));
     } else {
       LOG(debug) << "User: " << username << " registered";
     }
@@ -208,22 +194,21 @@ void UserHandler::RegisterUserWithId(
   mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
 
   if (!found) {
-    auto social_graph_client_wrapper = _social_graph_client_pool->Pop();
-    if (!social_graph_client_wrapper) {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_THRIFT_CONN_ERROR;
-      se.message = "Failed to connect to social-graph-service";
-      throw se;
+    auto social_graph_client = _social_graph_client_pool->Pop();
+    if (!social_graph_client) {
+      throw std::runtime_error("Failed to connect to social-graph-service");
     }
-    auto social_graph_client = social_graph_client_wrapper->GetClient();
     try {
-      social_graph_client->InsertUser(req_id, user_id, writer_text_map);
+      json req_j = {{"req_id", req_id}, {"user_id", user_id},
+                    {"carrier", writer_text_map}};
+      auto res = social_graph_client->PostJson("/InsertUser", req_j);
+      (void)res;
     } catch (...) {
-      _social_graph_client_pool->Remove(social_graph_client_wrapper);
+      _social_graph_client_pool->Remove(social_graph_client);
       LOG(error) << "Failed to insert user to social-graph-client";
       throw;
     }
-    _social_graph_client_pool->Keepalive(social_graph_client_wrapper);
+    _social_graph_client_pool->Keepalive(social_graph_client);
   }
 
   span->Finish();
@@ -281,10 +266,7 @@ void UserHandler::RegisterUser(
   mongoc_client_t *mongodb_client =
       mongoc_client_pool_pop(_mongodb_client_pool);
   if (!mongodb_client) {
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-    se.message = "Failed to pop a client from MongoDB pool";
-    throw se;
+    throw std::runtime_error("Failed to pop a client from MongoDB pool");
   }
   auto collection =
       mongoc_client_get_collection(mongodb_client, "user", "user");
@@ -303,20 +285,14 @@ void UserHandler::RegisterUser(
     mongoc_cursor_destroy(cursor);
     mongoc_collection_destroy(collection);
     mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-    se.message = error.message;
-    throw se;
+    throw std::runtime_error(error.message);
   } else if (found) {
     LOG(warning) << "User " << username << " already existed.";
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_THRIFT_HANDLER_ERROR;
-    se.message = "User " + username + " already existed";
     bson_destroy(query);
     mongoc_cursor_destroy(cursor);
     mongoc_collection_destroy(collection);
     mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-    throw se;
+    throw std::runtime_error("User " + username + " already existed");
   } else {
     bson_t *new_doc = bson_new();
     BSON_APPEND_INT64(new_doc, "user_id", user_id);
@@ -334,15 +310,12 @@ void UserHandler::RegisterUser(
                                       &error)) {
       LOG(error) << "Failed to insert user " << username
                  << " to MongoDB: " << error.message;
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_THRIFT_HANDLER_ERROR;
-      se.message =
-          "Failed to insert user " + username + " to MongoDB: " + error.message;
       bson_destroy(query);
       mongoc_cursor_destroy(cursor);
       mongoc_collection_destroy(collection);
       mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-      throw se;
+      throw std::runtime_error("Failed to insert user " + username +
+                               " to MongoDB: " + std::string(error.message));
     } else {
       LOG(debug) << "User: " << username << " registered";
     }
@@ -355,23 +328,22 @@ void UserHandler::RegisterUser(
   mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
 
   if (!found) {
-    auto social_graph_client_wrapper = _social_graph_client_pool->Pop();
-    if (!social_graph_client_wrapper) {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_THRIFT_CONN_ERROR;
-      se.message = "Failed to connect to social-graph-service";
-      throw se;
+    auto social_graph_client = _social_graph_client_pool->Pop();
+    if (!social_graph_client) {
+      throw std::runtime_error("Failed to connect to social-graph-service");
     }
-    auto social_graph_client = social_graph_client_wrapper->GetClient();
     try {
-      social_graph_client->InsertUser(req_id, user_id, writer_text_map);
+      json req_j = {{"req_id", req_id}, {"user_id", user_id},
+                    {"carrier", writer_text_map}};
+      auto res = social_graph_client->PostJson("/InsertUser", req_j);
+      (void)res;
     } catch (...) {
-      _social_graph_client_pool->Remove(social_graph_client_wrapper);
+      _social_graph_client_pool->Remove(social_graph_client);
       LOG(error) << "Failed to insert user to social-graph-service";
       throw;
     }
 
-    _social_graph_client_pool->Keepalive(social_graph_client_wrapper);
+    _social_graph_client_pool->Keepalive(social_graph_client);
   }
 
   span->Finish();
@@ -404,11 +376,10 @@ void UserHandler::ComposeCreatorWithUsername(
                       &memcached_flags, &memcached_rc);
     id_get_span->Finish();
     if (!user_id_mmc && memcached_rc != MEMCACHED_NOTFOUND) {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_MEMCACHED_ERROR;
-      se.message = memcached_strerror(memcached_client, memcached_rc);
+      auto msg = std::string("Memcached error: ") +
+                 memcached_strerror(memcached_client, memcached_rc);
       memcached_pool_push(_memcached_client_pool, memcached_client);
-      throw se;
+      throw std::runtime_error(msg);
     }
     memcached_pool_push(_memcached_client_pool, memcached_client);
   } else {
@@ -430,18 +401,13 @@ void UserHandler::ComposeCreatorWithUsername(
     mongoc_client_t *mongodb_client =
         mongoc_client_pool_pop(_mongodb_client_pool);
     if (!mongodb_client) {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-      se.message = "Failed to pop a client from MongoDB pool";
-      throw se;
+      throw std::runtime_error("Failed to pop a client from MongoDB pool");
     }
     auto collection =
         mongoc_client_get_collection(mongodb_client, "user", "user");
     if (!collection) {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-      se.message = "Failed to create collection user from DB user";
-      throw se;
+      throw std::runtime_error(
+          "Failed to create collection user from DB user");
     }
     bson_t *query = bson_new();
     BSON_APPEND_UTF8(query, "username", username.c_str());
@@ -461,20 +427,14 @@ void UserHandler::ComposeCreatorWithUsername(
         mongoc_cursor_destroy(cursor);
         mongoc_collection_destroy(collection);
         mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-        ServiceException se;
-        se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-        se.message = error.message;
-        throw se;
+        throw std::runtime_error(error.message);
       } else {
         LOG(warning) << "User: " << username << " doesn't exist in MongoDB";
         bson_destroy(query);
         mongoc_cursor_destroy(cursor);
         mongoc_collection_destroy(collection);
         mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-        ServiceException se;
-        se.errorCode = ErrorCode::SE_THRIFT_HANDLER_ERROR;
-        se.message = "User: " + username + " is not registered";
-        throw se;
+        throw std::runtime_error("User: " + username + " is not registered");
       }
     } else {
       LOG(debug) << "User: " << username << " found in MongoDB";
@@ -488,11 +448,8 @@ void UserHandler::ComposeCreatorWithUsername(
         mongoc_cursor_destroy(cursor);
         mongoc_collection_destroy(collection);
         mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-        ServiceException se;
-        se.errorCode = ErrorCode::SE_THRIFT_HANDLER_ERROR;
-        se.message = "user_id attribute of user: " + username +
-                     " was not found in the User object";
-        throw se;
+        throw std::runtime_error("user_id attribute of user: " + username +
+                                 " was not found in the User object");
       }
     }
     bson_destroy(query);
@@ -615,18 +572,13 @@ void UserHandler::Login(std::string &_return, int64_t req_id,
     mongoc_client_t *mongodb_client =
         mongoc_client_pool_pop(_mongodb_client_pool);
     if (!mongodb_client) {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-      se.message = "Failed to pop a client from MongoDB pool";
-      throw se;
+      throw std::runtime_error("Failed to pop a client from MongoDB pool");
     }
     auto collection =
         mongoc_client_get_collection(mongodb_client, "user", "user");
     if (!collection) {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-      se.message = "Failed to create collection user from DB user";
-      throw se;
+      throw std::runtime_error(
+          "Failed to create collection user from DB user");
     }
     bson_t *query = bson_new();
     BSON_APPEND_UTF8(query, "username", username.c_str());
@@ -646,10 +598,7 @@ void UserHandler::Login(std::string &_return, int64_t req_id,
       mongoc_cursor_destroy(cursor);
       mongoc_collection_destroy(collection);
       mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-      se.message = error.message;
-      throw se;
+      throw std::runtime_error(error.message);
     }
 
     if (!found) {
@@ -658,10 +607,7 @@ void UserHandler::Login(std::string &_return, int64_t req_id,
       mongoc_cursor_destroy(cursor);
       mongoc_collection_destroy(collection);
       mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_UNAUTHORIZED;
-      se.message = "User: " + username + " is not registered";
-      throw se;
+  throw std::runtime_error("User: " + username + " is not registered");
     } else {
       LOG(debug) << "Username: " << username << " found in MongoDB";
       bson_iter_t iter_password;
@@ -682,10 +628,7 @@ void UserHandler::Login(std::string &_return, int64_t req_id,
         mongoc_cursor_destroy(cursor);
         mongoc_collection_destroy(collection);
         mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-        ServiceException se;
-        se.errorCode = ErrorCode::SE_THRIFT_HANDLER_ERROR;
-        se.message = "user: " + username + " entry is NOT complete";
-        throw se;
+        throw std::runtime_error("user: " + username + " entry is NOT complete");
       }
       bson_destroy(query);
       mongoc_cursor_destroy(cursor);
@@ -710,16 +653,11 @@ void UserHandler::Login(std::string &_return, int64_t req_id,
                                    {"ttl", "3600"}})};
       _return = obj.signature();
     } else {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_UNAUTHORIZED;
-      se.message = "Incorrect username or password";
-      throw se;
+  throw std::runtime_error("Incorrect username or password");
     }
   } else {
-    ServiceException se;
-    se.errorCode = ErrorCode::SE_THRIFT_HANDLER_ERROR;
-    se.message = "Username: " + username + " incomplete login information.";
-    throw se;
+  throw std::runtime_error("Username: " + username +
+               " incomplete login information.");
   }
 
   if (!cached) {
@@ -774,11 +712,10 @@ int64_t UserHandler::GetUserId(
                       &memcached_flags, &memcached_rc);
     id_get_span->Finish();
     if (!user_id_mmc && memcached_rc != MEMCACHED_NOTFOUND) {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_MEMCACHED_ERROR;
-      se.message = memcached_strerror(memcached_client, memcached_rc);
+      auto msg = std::string("Memcached error: ") +
+                 memcached_strerror(memcached_client, memcached_rc);
       memcached_pool_push(_memcached_client_pool, memcached_client);
-      throw se;
+      throw std::runtime_error(msg);
     }
     memcached_pool_push(_memcached_client_pool, memcached_client);
   } else {
@@ -798,18 +735,13 @@ int64_t UserHandler::GetUserId(
     mongoc_client_t *mongodb_client =
         mongoc_client_pool_pop(_mongodb_client_pool);
     if (!mongodb_client) {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-      se.message = "Failed to pop a client from MongoDB pool";
-      throw se;
+      throw std::runtime_error("Failed to pop a client from MongoDB pool");
     }
     auto collection =
         mongoc_client_get_collection(mongodb_client, "user", "user");
     if (!collection) {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-      se.message = "Failed to create collection user from DB user";
-      throw se;
+      throw std::runtime_error(
+          "Failed to create collection user from DB user");
     }
     bson_t *query = bson_new();
     BSON_APPEND_UTF8(query, "username", username.c_str());
@@ -829,20 +761,14 @@ int64_t UserHandler::GetUserId(
         mongoc_cursor_destroy(cursor);
         mongoc_collection_destroy(collection);
         mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-        ServiceException se;
-        se.errorCode = ErrorCode::SE_MONGODB_ERROR;
-        se.message = error.message;
-        throw se;
+        throw std::runtime_error(error.message);
       } else {
         LOG(warning) << "User: " << username << " doesn't exist in MongoDB";
         bson_destroy(query);
         mongoc_cursor_destroy(cursor);
         mongoc_collection_destroy(collection);
         mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-        ServiceException se;
-        se.errorCode = ErrorCode::SE_THRIFT_HANDLER_ERROR;
-        se.message = "User: " + username + " is not registered";
-        throw se;
+        throw std::runtime_error("User: " + username + " is not registered");
       }
     } else {
       LOG(debug) << "User: " << username << " found in MongoDB";
@@ -856,11 +782,8 @@ int64_t UserHandler::GetUserId(
         mongoc_cursor_destroy(cursor);
         mongoc_collection_destroy(collection);
         mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-        ServiceException se;
-        se.errorCode = ErrorCode::SE_THRIFT_HANDLER_ERROR;
-        se.message = "user_id attribute of user: " + username +
-                     " was not found in the User object";
-        throw se;
+        throw std::runtime_error("user_id attribute of user: " + username +
+                                 " was not found in the User object");
       }
     }
     bson_destroy(query);
