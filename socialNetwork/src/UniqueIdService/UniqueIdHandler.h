@@ -8,8 +8,6 @@
 #include <sstream>
 #include <string>
 
-#include "../../gen-cpp/UniqueIdService.h"
-#include "../../gen-cpp/social_network_types.h"
 #include "../logger.h"
 #include "../tracing.h"
 
@@ -39,13 +37,14 @@ static int GetCounter(int64_t timestamp) {
   }
 }
 
-class UniqueIdHandler : public UniqueIdServiceIf {
+class UniqueIdHandler {
  public:
-  ~UniqueIdHandler() override = default;
+  ~UniqueIdHandler() = default;
   UniqueIdHandler(std::mutex *, const std::string &);
 
-  int64_t ComposeUniqueId(int64_t, PostType::type,
-                          const std::map<std::string, std::string> &) override;
+  // HTTP version: post_type passed as integer (kept for API parity, not used).
+  int64_t ComposeUniqueId(int64_t req_id, int post_type,
+                          const std::map<std::string, std::string> &carrier);
 
  private:
   std::mutex *_thread_lock;
@@ -59,8 +58,8 @@ UniqueIdHandler::UniqueIdHandler(std::mutex *thread_lock,
 }
 
 int64_t UniqueIdHandler::ComposeUniqueId(
-    int64_t req_id, PostType::type post_type,
-    const std::map<std::string, std::string> &carrier) {
+  int64_t req_id, int /*post_type*/,
+  const std::map<std::string, std::string> &carrier) {
   // Initialize a span
   TextMapReader reader(carrier);
   std::map<std::string, std::string> writer_text_map;

@@ -12,19 +12,16 @@
  */
 
 #include <signal.h>
-#include <thrift/protocol/TBinaryProtocol.h>
-#include <thrift/server/TThreadedServer.h>
-#include <thrift/transport/TBufferTransports.h>
-#include <thrift/transport/TServerSocket.h>
+
+#include <nlohmann/json.hpp>
 
 #include "../utils.h"
-#include "../utils_thrift.h"
+#include "../logger.h"
+#include "../tracing.h"
+#include "../HttpClientWrapper.h"  // for httplib server
 #include "UniqueIdHandler.h"
 
-using apache::thrift::protocol::TBinaryProtocolFactory;
-using apache::thrift::server::TThreadedServer;
-using apache::thrift::transport::TFramedTransportFactory;
-using apache::thrift::transport::TServerSocket;
+using json = nlohmann::json;
 using namespace social_network;
 
 void sigintHandler(int sig) { exit(EXIT_SUCCESS); }
@@ -49,14 +46,26 @@ int main(int argc, char *argv[]) {
   LOG(info) << "machine_id = " << machine_id;
 
   std::mutex thread_lock;
-  std::shared_ptr<TServerSocket> server_socket = get_server_socket(config_json, "0.0.0.0", port);
-  TThreadedServer server(
-      std::make_shared<UniqueIdServiceProcessor>(
-          std::make_shared<UniqueIdHandler>(&thread_lock, machine_id)),
-      server_socket,
-      std::make_shared<TFramedTransportFactory>(),
-      std::make_shared<TBinaryProtocolFactory>());
+  UniqueIdHandler handler(&thread_lock, machine_id);
+  httplib::Server server;
 
-  LOG(info) << "Starting the unique-id-service server ...";
-  server.serve();
+  server.Post("/ComposeUniqueId", [&](const httplib::Request &req, httplib::Response &res) {
+    try {
+      auto j = json::parse(req.body);
+      int64_t req_id = j["req_id"].get<int64_t>();
+      int post_type = 0;
+      if (j.contains("post_type")) post_type = j["post_type"].get<int>();
+      std::map<std::string, std::string> carrier;
+      if (j.contains("carrier")) carrier = j["carrier"].get<std::map<std::string, std::string>>();
+
+      auto unique_id = handler.ComposeUniqueId(req_id, post_type, carrier);
+      res.set_content(json({{"unique_id", unique_id}}).dump(), "application/json");
+    } catch (const std::exception &e) {
+      res.status = 500;
+      res.set_content(json({{"error", e.what()}}).dump(), "application/json");
+    }
+  });
+
+  LOG(info) << "Starting the unique-id-service HTTP server ...";
+  server.listen("0.0.0.0", port);
 }

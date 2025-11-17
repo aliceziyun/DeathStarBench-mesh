@@ -5,41 +5,39 @@
 #include <iostream>
 #include <regex>
 #include <string>
+#include <nlohmann/json.hpp>
 
-#include "../../gen-cpp/TextService.h"
-#include "../../gen-cpp/UrlShortenService.h"
-#include "../../gen-cpp/UserMentionService.h"
 #include "../ClientPool.h"
-#include "../ThriftClient.h"
+#include "../HttpClientWrapper.h"
 #include "../logger.h"
 #include "../tracing.h"
 
 namespace social_network {
 
-class TextHandler : public TextServiceIf {
+class TextHandler {
  public:
-  TextHandler(ClientPool<ThriftClient<UrlShortenServiceClient>> *,
-              ClientPool<ThriftClient<UserMentionServiceClient>> *);
-  ~TextHandler() override = default;
+  TextHandler(ClientPool<HttpClientWrapper> *url_pool,
+              ClientPool<HttpClientWrapper> *user_mention_pool)
+      : _url_client_pool(url_pool), _user_mention_client_pool(user_mention_pool) {}
+  ~TextHandler() = default;
 
-  void ComposeText(TextServiceReturn &_return, int64_t, const std::string &,
-                   const std::map<std::string, std::string> &) override;
+  void ComposeText(std::string &updated_text,
+                   std::vector<nlohmann::json> &urls_out,
+                   std::vector<nlohmann::json> &user_mentions_out,
+                   int64_t req_id,
+                   const std::string &text,
+                   const std::map<std::string, std::string> &carrier);
 
  private:
-  ClientPool<ThriftClient<UrlShortenServiceClient>> *_url_client_pool;
-  ClientPool<ThriftClient<UserMentionServiceClient>> *_user_mention_client_pool;
+  ClientPool<HttpClientWrapper> *_url_client_pool;
+  ClientPool<HttpClientWrapper> *_user_mention_client_pool;
 };
 
-TextHandler::TextHandler(
-    ClientPool<ThriftClient<UrlShortenServiceClient>> *url_client_pool,
-    ClientPool<ThriftClient<UserMentionServiceClient>>
-        *user_mention_client_pool) {
-  _url_client_pool = url_client_pool;
-  _user_mention_client_pool = user_mention_client_pool;
-}
-
 void TextHandler::ComposeText(
-    TextServiceReturn &_return, int64_t req_id, const std::string &text,
+    std::string &updated_text,
+    std::vector<nlohmann::json> &urls_out,
+    std::vector<nlohmann::json> &user_mentions_out,
+    int64_t req_id, const std::string &text,
     const std::map<std::string, std::string> &carrier) {
   // Initialize a span
   TextMapReader reader(carrier);
@@ -73,65 +71,71 @@ void TextHandler::ComposeText(
   auto shortened_urls_future = std::async(std::launch::async, [&]() {
     auto url_span = opentracing::Tracer::Global()->StartSpan(
         "compose_urls_client", {opentracing::ChildOf(&span->context())});
-
     std::map<std::string, std::string> url_writer_text_map;
     TextMapWriter url_writer(url_writer_text_map);
     opentracing::Tracer::Global()->Inject(url_span->context(), url_writer);
 
-    auto url_client_wrapper = _url_client_pool->Pop();
-    if (!url_client_wrapper) {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_THRIFT_CONN_ERROR;
-      se.message = "Failed to connect to url-shorten-service";
-      throw se;
+    auto url_client = _url_client_pool->Pop();
+    if (!url_client) {
+      LOG(error) << "Failed to connect to url-shorten-service";
+      throw std::runtime_error("url-shorten-service connection failed");
     }
-    std::vector<Url> _return_urls;
-    auto url_client = url_client_wrapper->GetClient();
+    nlohmann::json req_json = {
+        {"req_id", req_id}, {"urls", urls}, {"carrier", url_writer_text_map}};
+    nlohmann::json resp_json;
     try {
-      url_client->ComposeUrls(_return_urls, req_id, urls, url_writer_text_map);
-    } catch (...) {
-      LOG(error) << "Failed to upload urls to url-shorten-service";
-      _url_client_pool->Remove(url_client_wrapper);
+      resp_json = url_client->PostJson("/ComposeUrls", req_json);
+      _url_client_pool->Keepalive(url_client);
+    } catch (const std::exception &e) {
+      _url_client_pool->Remove(url_client);
+      LOG(error) << "Failed HTTP call to url-shorten-service: " << e.what();
       throw;
     }
-    _url_client_pool->Keepalive(url_client_wrapper);
-    return _return_urls;
+    url_span->Finish();
+    std::vector<nlohmann::json> result_urls;
+    if (resp_json.contains("urls")) {
+      for (auto &item : resp_json["urls"]) {
+        result_urls.push_back(item);
+      }
+    }
+    return result_urls;
   });
 
   auto user_mention_future = std::async(std::launch::async, [&]() {
     auto user_mention_span = opentracing::Tracer::Global()->StartSpan(
-        "compose_user_mentions_client",
-        {opentracing::ChildOf(&span->context())});
-
+        "compose_user_mentions_client", {opentracing::ChildOf(&span->context())});
     std::map<std::string, std::string> user_mention_writer_text_map;
     TextMapWriter user_mention_writer(user_mention_writer_text_map);
-    opentracing::Tracer::Global()->Inject(user_mention_span->context(),
-                                          user_mention_writer);
+    opentracing::Tracer::Global()->Inject(user_mention_span->context(), user_mention_writer);
 
-    auto user_mention_client_wrapper = _user_mention_client_pool->Pop();
-    if (!user_mention_client_wrapper) {
-      ServiceException se;
-      se.errorCode = ErrorCode::SE_THRIFT_CONN_ERROR;
-      se.message = "Failed to connect to user-mention-service";
-      throw se;
+    auto user_mention_client = _user_mention_client_pool->Pop();
+    if (!user_mention_client) {
+      LOG(error) << "Failed to connect to user-mention-service";
+      throw std::runtime_error("user-mention-service connection failed");
     }
-    std::vector<UserMention> _return_user_mentions;
-    auto user_mention_client = user_mention_client_wrapper->GetClient();
+    nlohmann::json req_json = {{"req_id", req_id},
+                                {"usernames", mention_usernames},
+                                {"carrier", user_mention_writer_text_map}};
+    nlohmann::json resp_json;
     try {
-      user_mention_client->ComposeUserMentions(_return_user_mentions, req_id,
-                                               mention_usernames,
-                                               user_mention_writer_text_map);
-    } catch (...) {
-      LOG(error) << "Failed to upload user_mentions to user-mention-service";
-      _user_mention_client_pool->Remove(user_mention_client_wrapper);
+      resp_json = user_mention_client->PostJson("/ComposeUserMentions", req_json);
+      _user_mention_client_pool->Keepalive(user_mention_client);
+    } catch (const std::exception &e) {
+      _user_mention_client_pool->Remove(user_mention_client);
+      LOG(error) << "Failed HTTP call to user-mention-service: " << e.what();
       throw;
     }
-
-    _user_mention_client_pool->Keepalive(user_mention_client_wrapper);
-    return _return_user_mentions;
+    user_mention_span->Finish();
+    std::vector<nlohmann::json> result_mentions;
+    if (resp_json.contains("user_mentions")) {
+      for (auto &item : resp_json["user_mentions"]) {
+        result_mentions.push_back(item);
+      }
+    }
+    return result_mentions;
   });
 
-  std::vector<Url> target_urls;
+  std::vector<nlohmann::json> target_urls;
   try {
     target_urls = shortened_urls_future.get();
   } catch (...) {
@@ -139,7 +143,7 @@ void TextHandler::ComposeText(
     throw;
   }
 
-  std::vector<UserMention> user_mentions;
+  std::vector<nlohmann::json> user_mentions;
   try {
     user_mentions = user_mention_future.get();
   } catch (...) {
@@ -147,24 +151,24 @@ void TextHandler::ComposeText(
     throw;
   }
 
-  std::string updated_text;
+  std::string updated_text_;
   if (!urls.empty()) {
     s = text;
     int idx = 0;
     while (std::regex_search(s, m, e)) {
       auto url = m.str();
       urls.emplace_back(url);
-      updated_text += m.prefix().str() + target_urls[idx].shortened_url;
+  updated_text_ += m.prefix().str() + target_urls[idx]["shortened_url"].get<std::string>();
       s = m.suffix().str();
       idx++;
     }
   } else {
-    updated_text = text;
+    updated_text_ = text;
   }
 
-  _return.user_mentions = user_mentions;
-  _return.text = updated_text;
-  _return.urls = target_urls;
+  user_mentions_out = user_mentions;
+  urls_out = target_urls;
+  updated_text = updated_text_;
   span->Finish();
 }
 
