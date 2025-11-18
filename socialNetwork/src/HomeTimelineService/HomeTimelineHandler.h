@@ -107,7 +107,7 @@ void HomeTimelineHandler::WriteHomeTimeline(
   // Find followers of the user
   // auto followers_span = opentracing::Tracer::Global()->StartSpan(
   //     "get_followers_client", {opentracing::ChildOf(&span->context())});
-  // std::map<std::string, std::string> writer_text_map;
+  std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // opentracing::Tracer::Global()->Inject(followers_span->context(), writer);
 
@@ -218,7 +218,7 @@ void HomeTimelineHandler::ReadHomeTimeline(
     int stop_idx, const std::map<std::string, std::string> &carrier) {
   // Initialize a span
   // TextMapReader reader(carrier);
-  // std::map<std::string, std::string> writer_text_map;
+  std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(

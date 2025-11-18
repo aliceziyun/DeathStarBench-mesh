@@ -49,11 +49,7 @@ end
 function _M.ReadUserTimeline()
   local bridge_tracer = require "opentracing_bridge_tracer"
   local ngx = ngx
-  local GenericObjectPool = require "GenericObjectPool"
-  local social_network_UserTimelineService = require "social_network_UserTimelineService"
-  local UserTimelineServiceClient = social_network_UserTimelineService.UserTimelineServiceClient
   local cjson = require "cjson"
-  local liblualongnumber = require "liblualongnumber"
 
   local req_id = tonumber(string.sub(ngx.var.request_id, 0, 15), 16)
   local tracer = bridge_tracer.new_from_global()
@@ -76,31 +72,98 @@ function _M.ReadUserTimeline()
   end
 
 
-  local client = GenericObjectPool:connection(
-      UserTimelineServiceClient, "user-timeline-service" .. k8s_suffix, 9090)
-  local status, ret = pcall(client.ReadUserTimeline, client, req_id,
-      tonumber(args.user_id), tonumber(args.start), tonumber(args.stop), carrier)
-  if not status then
-    ngx.status = ngx.HTTP_INTERNAL_SERVER_ERROR
-    if (ret.message) then
-      ngx.say("Get user-timeline failure: " .. ret.message)
-      ngx.log(ngx.ERR, "Get user-timeline failure: " .. ret.message)
-    else
-      ngx.say("Get user-timeline failure: " .. ret)
-      ngx.log(ngx.ERR, "Get user-timeline failure: " .. ret)
-    end
-    client.iprot.trans:close()
-    span:finish()
-    ngx.exit(ngx.HTTP_INTERNAL_SERVER_ERROR)
-  else
-    GenericObjectPool:returnConnection(client)
-    local user_timeline = _LoadTimeline(ret)
-    ngx.header.content_type = "application/json; charset=utf-8"
-    ngx.say(cjson.encode(user_timeline) )
+  -- HTTP/JSON POST to user-timeline-service /ReadUserTimeline
+  local body_tbl = {
+    req_id = req_id,
+    user_id = tonumber(args.user_id),
+    start = tonumber(args.start),
+    stop = tonumber(args.stop),
+    carrier = carrier
+  }
+  local body = cjson.encode(body_tbl)
 
+  local sock = ngx.socket.tcp()
+  sock:settimeout(2000)
+  local host = "user-timeline-service" .. k8s_suffix
+  local port = 9090
+  local ok, err = sock:connect(host, port)
+  if not ok then
+    ngx.status = ngx.HTTP_INTERNAL_SERVER_ERROR
+    ngx.say("Get user-timeline failure: cannot connect: " .. (err or ""))
+    ngx.log(ngx.ERR, "user-timeline connect error: " .. (err or ""))
+    span:finish()
+    ngx.exit(ngx.status)
   end
-  span:finish()
-  ngx.exit(ngx.HTTP_OK)
+
+  local req_lines = {
+    "POST /ReadUserTimeline HTTP/1.1",
+    "Host: " .. host,
+    "Content-Type: application/json",
+    "Content-Length: " .. tostring(#body),
+    "Connection: close",
+    "",
+    body
+  }
+  local req_str = table.concat(req_lines, "\r\n")
+
+  local bytes, send_err = sock:send(req_str)
+  if not bytes then
+    ngx.status = ngx.HTTP_INTERNAL_SERVER_ERROR
+    ngx.say("Get user-timeline failure: send error: " .. (send_err or ""))
+    ngx.log(ngx.ERR, "user-timeline send error: " .. (send_err or ""))
+    sock:close()
+    span:finish()
+    ngx.exit(ngx.status)
+  end
+
+  local status_line, lerr = sock:receive("*l")
+  if not status_line then
+    ngx.status = ngx.HTTP_INTERNAL_SERVER_ERROR
+    ngx.say("Get user-timeline failure: receive error: " .. (lerr or ""))
+    ngx.log(ngx.ERR, "user-timeline receive error: " .. (lerr or ""))
+    sock:close()
+    span:finish()
+    ngx.exit(ngx.status)
+  end
+
+  local http_code = tonumber(string.match(status_line, "HTTP/%d%.%d%s+(%d%d%d)")) or 0
+
+  -- skip headers
+  while true do
+    local line, errh = sock:receive("*l")
+    if not line or line == "" then break end
+    if not line then
+      ngx.log(ngx.WARN, "user-timeline header read ended: " .. (errh or ""))
+      break
+    end
+  end
+
+  local resp_body = sock:receive("*a")
+  if not resp_body then resp_body = "" end
+  sock:close()
+
+  if http_code >= 200 and http_code < 300 then
+    local okj, decoded = pcall(cjson.decode, resp_body)
+    if not okj then
+      ngx.status = ngx.HTTP_INTERNAL_SERVER_ERROR
+      ngx.say("Get user-timeline failure: invalid JSON response")
+      ngx.log(ngx.ERR, "user-timeline invalid JSON: " .. (resp_body or ""))
+      span:finish()
+      ngx.exit(ngx.status)
+    end
+    local posts = (decoded and decoded.posts) or {}
+    local user_timeline = _LoadTimeline(posts)
+    ngx.header.content_type = "application/json; charset=utf-8"
+    ngx.say(cjson.encode(user_timeline))
+    span:finish()
+    ngx.exit(ngx.HTTP_OK)
+  else
+    ngx.status = ngx.HTTP_INTERNAL_SERVER_ERROR
+    ngx.say("Get user-timeline failure: HTTP " .. tostring(http_code) .. " body: " .. (resp_body or ""))
+    ngx.log(ngx.ERR, "user-timeline failure: HTTP " .. tostring(http_code) .. " body: " .. (resp_body or ""))
+    span:finish()
+    ngx.exit(ngx.status)
+  end
 end
 
 return _M

@@ -639,7 +639,7 @@ void SocialGraphHandler::GetFollowees(
   // If user_id in the sodical graph Redis server, read from MongoDB and
   // update Redis.
   else {
-    redis_span->Finish();
+    // redis_span->Finish();
     mongoc_client_t *mongodb_client =
         mongoc_client_pool_pop(_mongodb_client_pool);
     if (!mongodb_client) {

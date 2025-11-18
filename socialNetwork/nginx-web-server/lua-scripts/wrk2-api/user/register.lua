@@ -11,18 +11,16 @@ end
 function _M.RegisterUser()
   local bridge_tracer = require "opentracing_bridge_tracer"
   local ngx = ngx
-  local GenericObjectPool = require "GenericObjectPool"
-  local social_network_UserService = require "social_network_UserService"
-  local UserServiceClient = social_network_UserService.UserServiceClient
+  local cjson = require "cjson"
 
   local req_id = tonumber(string.sub(ngx.var.request_id, 0, 15), 16)
-  local tracer = bridge_tracer.new_from_global()
-  local parent_span_context = tracer:binary_extract(
-      ngx.var.opentracing_binary_context)
-  local span = tracer:start_span("register_client",
-      {["references"] = {{"child_of", parent_span_context}}})
+  -- local tracer = bridge_tracer.new_from_global()
+  -- local parent_span_context = tracer:binary_extract(
+  --     ngx.var.opentracing_binary_context)
+  -- local span = tracer:start_span("register_client",
+  --     {["references"] = {{"child_of", parent_span_context}}})
   local carrier = {}
-  tracer:text_map_inject(span:context(), carrier)
+  -- tracer:text_map_inject(span:context(), carrier)
 
   ngx.req.read_body()
   local post = ngx.req.get_post_args()
@@ -36,27 +34,87 @@ function _M.RegisterUser()
     ngx.exit(ngx.HTTP_BAD_REQUEST)
   end
 
-  local client = GenericObjectPool:connection(UserServiceClient, "user-service" .. k8s_suffix, 9090)
+  -- Use HTTP/JSON to call user-service /RegisterUserWithId
+  local body_tbl = {
+    req_id = req_id,
+    first_name = post.first_name,
+    last_name = post.last_name,
+    username = post.username,
+    password = post.password,
+    user_id = tonumber(post.user_id),
+    carrier = carrier
+  }
+  local body = cjson.encode(body_tbl)
 
-  local status, err = pcall(client.RegisterUserWithId, client, req_id, post.first_name,
-      post.last_name, post.username, post.password, tonumber(post.user_id), carrier)
-
-  if not status then
+  local sock = ngx.socket.tcp()
+  sock:settimeout(2000)
+  local host = "user-service" .. k8s_suffix
+  local port = 9090
+  local ok, err = sock:connect(host, port)
+  if not ok then
     ngx.status = ngx.HTTP_INTERNAL_SERVER_ERROR
-    if (err.message) then
-      ngx.say("User registration failure: " .. err.message)
-      ngx.log(ngx.ERR, "User registration failure: " .. err.message)
-    else
-      ngx.say("User registration failure: " .. err)
-      ngx.log(ngx.ERR, "User registration failure: " .. err)
-    end
-    client.iprot.trans:close()
-    ngx.exit(ngx.HTTP_INTERNAL_SERVER_ERROR)
+    ngx.say("User registration failure: cannot connect: " .. (err or ""))
+    ngx.log(ngx.ERR, "register connect error: " .. (err or ""))
+    -- span:finish()
+    ngx.exit(ngx.status)
   end
 
-  ngx.say("Success!")
-  GenericObjectPool:returnConnection(client)
-  span:finish()
+  local req_lines = {
+    "POST /RegisterUserWithId HTTP/1.1",
+    "Host: " .. host,
+    "Content-Type: application/json",
+    "Content-Length: " .. tostring(#body),
+    "Connection: close",
+    "",
+    body
+  }
+  local req_str = table.concat(req_lines, "\r\n")
+
+  local bytes, send_err = sock:send(req_str)
+  if not bytes then
+    ngx.status = ngx.HTTP_INTERNAL_SERVER_ERROR
+    ngx.say("User registration failure: send error: " .. (send_err or ""))
+    ngx.log(ngx.ERR, "register send error: " .. (send_err or ""))
+    sock:close()
+    -- span:finish()
+    ngx.exit(ngx.status)
+  end
+
+  local status_line, rerr = sock:receive("*l")
+  if not status_line then
+    ngx.status = ngx.HTTP_INTERNAL_SERVER_ERROR
+    ngx.say("User registration failure: receive error: " .. (rerr or ""))
+    ngx.log(ngx.ERR, "register receive error: " .. (rerr or ""))
+    sock:close()
+    -- span:finish()
+    ngx.exit(ngx.status)
+  end
+
+  local http_code = tonumber(string.match(status_line, "HTTP/%d%.%d%s+(%d%d%d)")) or 0
+
+  -- skip headers
+  while true do
+    local line, herr = sock:receive("*l")
+    if not line or line == "" then break end
+    if not line then
+      ngx.log(ngx.WARN, "register header read ended: " .. (herr or ""))
+      break
+    end
+  end
+  local resp_body = sock:receive("*a")
+  if not resp_body then resp_body = "" end
+  sock:close()
+
+  if http_code >= 200 and http_code < 300 then
+    ngx.say("Success!")
+    -- span:finish()
+  else
+    ngx.status = ngx.HTTP_INTERNAL_SERVER_ERROR
+    ngx.say("User registration failure: HTTP " .. tostring(http_code) .. " body: " .. (resp_body or ""))
+    ngx.log(ngx.ERR, "User registration failure: HTTP " .. tostring(http_code) .. " body: " .. (resp_body or ""))
+    -- span:finish()
+    ngx.exit(ngx.status)
+  end
 end
 
 return _M

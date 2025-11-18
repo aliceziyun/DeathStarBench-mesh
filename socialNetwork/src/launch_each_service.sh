@@ -4,14 +4,12 @@ cd $(dirname "$0")
 # go sub directories and launch the service
 for dir in */; do
     if [ -d "$dir" ]; then
-        echo "Launching service in $dir"
+        echo "Compiling service in $dir"
 
-        # copy config file
-        # mkdir -p "$dir/build/config"
-        # cp ./service-config.json "$dir/build/config/service-config.json"
-
+        mkdir -p "$dir/build"
         cd "$dir/build"
-        ./$(basename "$dir") &
+        cmake ..
+        make -j4
         cd ../..
     fi
 done

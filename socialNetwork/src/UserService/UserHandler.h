@@ -369,13 +369,13 @@ void UserHandler::ComposeCreatorWithUsername(
       memcached_pool_pop(_memcached_client_pool, true, &memcached_rc);
   char *user_id_mmc;
   if (memcached_client) {
-    auto id_get_span = opentracing::Tracer::Global()->StartSpan(
-        "user_mmc_get_client", {opentracing::ChildOf(&span->context())});
+    // auto id_get_span = opentracing::Tracer::Global()->StartSpan(
+    //     "user_mmc_get_client", {opentracing::ChildOf(&span->context())});
     user_id_mmc =
         memcached_get(memcached_client, (username + ":user_id").c_str(),
                       (username + ":user_id").length(), &user_id_size,
                       &memcached_flags, &memcached_rc);
-    id_get_span->Finish();
+    // id_get_span->Finish();
     if (!user_id_mmc && memcached_rc != MEMCACHED_NOTFOUND) {
       auto msg = std::string("Memcached error: ") +
                  memcached_strerror(memcached_client, memcached_rc);
