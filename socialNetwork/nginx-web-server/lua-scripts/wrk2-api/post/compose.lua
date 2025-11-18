@@ -79,12 +79,15 @@ function _M.ComposePost()
     ngx.exit(ngx.status)
   end
 
-  local req = "POST " .. path .. " HTTP/1.1\r\n"
-    .. "Host: " .. host .. ":" .. port .. "\r\n"
-    .. "Content-Type: application/json\r\n"
-    .. "Content-Length: " .. #payload .. "\r\n"
-    .. "Connection: close\r\n\r\n"
-    .. payload
+  local req = table.concat({
+    "POST " .. path .. " HTTP/1.1",
+    "Host: " .. host,
+    "Content-Type: application/json",
+    "Content-Length: " .. tostring(#payload),
+    "Connection: close",
+    "",
+    payload
+  }, "\r\n")
 
   local bytes, send_err = sock:send(req)
   if not bytes then
