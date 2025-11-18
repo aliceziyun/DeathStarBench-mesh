@@ -64,7 +64,7 @@ function _M.ComposePost()
       ", post_type: ", post.post_type)
 
   local body_tbl = {
-    req_id = req_id,
+    req_id = tostring(req_id),
     username = post.username,
     user_id = tonumber(post.user_id),
     text = post.text,
