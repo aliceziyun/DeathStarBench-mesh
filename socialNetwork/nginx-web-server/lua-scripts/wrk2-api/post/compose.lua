@@ -20,9 +20,22 @@ function _M.ComposePost()
   -- local parent_span_context = tracer:binary_extract(ngx.var.opentracing_binary_context)
 
 
+  -- Read and parse JSON body instead of form args
   ngx.req.read_body()
   local raw = ngx.req.get_body_data()
-  local post = ngx.decode_args(raw, 0) 
+  if not raw or raw == '' then
+    ngx.status = ngx.HTTP_BAD_REQUEST
+    ngx.say("Empty body")
+    ngx.log(ngx.ERR, "Empty body")
+    ngx.exit(ngx.status)
+  end
+  local ok_json, post = pcall(cjson.decode, raw)
+  if (not ok_json) or type(post) ~= 'table' then
+    ngx.status = ngx.HTTP_BAD_REQUEST
+    ngx.say("Invalid JSON body")
+    ngx.log(ngx.ERR, "Invalid JSON body: ", raw)
+    ngx.exit(ngx.status)
+  end
 
   if (_StrIsEmpty(post.user_id) or _StrIsEmpty(post.username) or
       _StrIsEmpty(post.post_type) or _StrIsEmpty(post.text)) then
@@ -39,16 +52,9 @@ function _M.ComposePost()
   -- tracer:text_map_inject(span:context(), carrier)
 
   -- build request body
-  local media_ids = {}
-  local media_types = {}
-  if (not _StrIsEmpty(post.media_ids)) then
-    local ok_decode, decoded = pcall(cjson.decode, post.media_ids)
-    if ok_decode and type(decoded) == "table" then media_ids = decoded end
-  end
-  if (not _StrIsEmpty(post.media_types)) then
-    local ok_decode, decoded = pcall(cjson.decode, post.media_types)
-    if ok_decode and type(decoded) == "table" then media_types = decoded end
-  end
+  -- Extract arrays directly from JSON (already decoded)
+  local media_ids = (type(post.media_ids) == 'table') and post.media_ids or {}
+  local media_types = (type(post.media_types) == 'table') and post.media_types or {}
 
   ngx.log(ngx.ERR, "Composing post for user_id: ", post.user_id,
       ", username: ", post.username,
