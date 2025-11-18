@@ -61,6 +61,8 @@ function _M.ComposePost()
     carrier = carrier
   }
 
+  print("ComposePost payload: ", body_tbl)
+
   local payload = cjson.encode(body_tbl)
 
   -- HTTP POST to compose-post-service
@@ -79,15 +81,12 @@ function _M.ComposePost()
     ngx.exit(ngx.status)
   end
 
-  local req = table.concat({
-    "POST " .. path .. " HTTP/1.1",
-    "Host: " .. host,
-    "Content-Type: application/json",
-    "Content-Length: " .. tostring(#payload),
-    "Connection: close",
-    "",
-    payload
-  }, "\r\n")
+  local req = "POST " .. path .. " HTTP/1.1\r\n"
+    .. "Host: " .. host .. ":" .. port .. "\r\n"
+    .. "Content-Type: application/json\r\n"
+    .. "Content-Length: " .. #payload .. "\r\n"
+    .. "Connection: close\r\n\r\n"
+    .. payload
 
   local bytes, send_err = sock:send(req)
   if not bytes then
