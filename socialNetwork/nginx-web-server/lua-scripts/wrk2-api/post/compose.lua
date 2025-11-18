@@ -20,7 +20,8 @@ function _M.ComposePost()
   -- local parent_-- span:finish()_context = tracer:binary_extract(ngx.var.opentracing_binary_context)
 
   ngx.req.read_body()
-  local post = ngx.req.get_post_args()
+  local raw = ngx.req.get_body_data()
+  local post = ngx.decode_args(raw)
 
   if (_StrIsEmpty(post.user_id) or _StrIsEmpty(post.username) or
       _StrIsEmpty(post.post_type) or _StrIsEmpty(post.text)) then
