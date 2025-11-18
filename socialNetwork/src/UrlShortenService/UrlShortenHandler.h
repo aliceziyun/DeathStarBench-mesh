@@ -12,7 +12,7 @@
 
 #include "../social_network_types.h"
 #include "../logger.h"
-#include "../tracing.h"
+// #include "../tracing.h"
 
 #define HOSTNAME "http://short-url/"
 
@@ -71,14 +71,14 @@ void UrlShortenHandler::ComposeUrls(
     const std::map<std::string, std::string> &carrier) {
 
   // Initialize a span
-  TextMapReader reader(carrier);
-  std::map<std::string, std::string> writer_text_map;
-  TextMapWriter writer(writer_text_map);
-  auto parent_span = opentracing::Tracer::Global()->Extract(reader);
-  auto span = opentracing::Tracer::Global()->StartSpan(
-      "compose_urls_server",
-      { opentracing::ChildOf(parent_span->get()) });
-  opentracing::Tracer::Global()->Inject(span->context(), writer);
+  // TextMapReader reader(carrier);
+  // std::map<std::string, std::string> writer_text_map;
+  // TextMapWriter writer(writer_text_map);
+  // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
+  // auto span = opentracing::Tracer::Global()->StartSpan(
+  //     "compose_urls_server",
+  //     { opentracing::ChildOf(parent_span->get()) });
+  // opentracing::Tracer::Global()->Inject(span->context(), writer);
 
   std::vector<Url> target_urls;
   std::future<void> mongo_future;
@@ -108,9 +108,9 @@ void UrlShortenHandler::ComposeUrls(
             throw std::runtime_error("MongoDB collection error");
           }
 
-          auto mongo_span = opentracing::Tracer::Global()->StartSpan(
-              "url_mongo_insert_client",
-              { opentracing::ChildOf(&span->context()) });
+          // auto mongo_span = opentracing::Tracer::Global()->StartSpan(
+          //     "url_mongo_insert_client",
+          //     { opentracing::ChildOf(&span->context()) });
 
           mongoc_bulk_operation_t *bulk;
           bson_t *doc;
@@ -139,7 +139,7 @@ void UrlShortenHandler::ComposeUrls(
           mongoc_bulk_operation_destroy(bulk);
           mongoc_collection_destroy(collection);
           mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-          mongo_span->Finish();
+          // mongo_span->Finish();
         });
 
   }
@@ -154,7 +154,7 @@ void UrlShortenHandler::ComposeUrls(
   }
 
   _return = target_urls;
-  span->Finish();
+  // span->Finish();
 
 }
 

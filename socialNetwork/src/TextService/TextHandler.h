@@ -40,13 +40,13 @@ void TextHandler::ComposeText(
     int64_t req_id, const std::string &text,
     const std::map<std::string, std::string> &carrier) {
   // Initialize a span
-  TextMapReader reader(carrier);
-  std::map<std::string, std::string> writer_text_map;
-  TextMapWriter writer(writer_text_map);
-  auto parent_span = opentracing::Tracer::Global()->Extract(reader);
-  auto span = opentracing::Tracer::Global()->StartSpan(
-      "compose_text_server", {opentracing::ChildOf(parent_span->get())});
-  opentracing::Tracer::Global()->Inject(span->context(), writer);
+  // TextMapReader reader(carrier);
+  // std::map<std::string, std::string> writer_text_map;
+  // TextMapWriter writer(writer_text_map);
+  // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
+  // auto span = opentracing::Tracer::Global()->StartSpan(
+  //     "compose_text_server", {opentracing::ChildOf(parent_span->get())});
+  // opentracing::Tracer::Global()->Inject(span->context(), writer);
 
   std::vector<std::string> mention_usernames;
   std::smatch m;
@@ -69,11 +69,11 @@ void TextHandler::ComposeText(
   }
 
   auto shortened_urls_future = std::async(std::launch::async, [&]() {
-    auto url_span = opentracing::Tracer::Global()->StartSpan(
-        "compose_urls_client", {opentracing::ChildOf(&span->context())});
-    std::map<std::string, std::string> url_writer_text_map;
-    TextMapWriter url_writer(url_writer_text_map);
-    opentracing::Tracer::Global()->Inject(url_span->context(), url_writer);
+    // auto url_span = opentracing::Tracer::Global()->StartSpan(
+    //     "compose_urls_client", {opentracing::ChildOf(&span->context())});
+    // std::map<std::string, std::string> url_writer_text_map;
+    // TextMapWriter url_writer(url_writer_text_map);
+    // opentracing::Tracer::Global()->Inject(url_span->context(), url_writer);
 
     auto url_client = _url_client_pool->Pop();
     if (!url_client) {
@@ -91,7 +91,7 @@ void TextHandler::ComposeText(
       LOG(error) << "Failed HTTP call to url-shorten-service: " << e.what();
       throw;
     }
-    url_span->Finish();
+    // url_span->Finish();
     std::vector<nlohmann::json> result_urls;
     if (resp_json.contains("urls")) {
       for (auto &item : resp_json["urls"]) {
@@ -102,11 +102,11 @@ void TextHandler::ComposeText(
   });
 
   auto user_mention_future = std::async(std::launch::async, [&]() {
-    auto user_mention_span = opentracing::Tracer::Global()->StartSpan(
-        "compose_user_mentions_client", {opentracing::ChildOf(&span->context())});
-    std::map<std::string, std::string> user_mention_writer_text_map;
-    TextMapWriter user_mention_writer(user_mention_writer_text_map);
-    opentracing::Tracer::Global()->Inject(user_mention_span->context(), user_mention_writer);
+    // auto user_mention_span = opentracing::Tracer::Global()->StartSpan(
+    //     "compose_user_mentions_client", {opentracing::ChildOf(&span->context())});
+    // std::map<std::string, std::string> user_mention_writer_text_map;
+    // TextMapWriter user_mention_writer(user_mention_writer_text_map);
+    // opentracing::Tracer::Global()->Inject(user_mention_span->context(), user_mention_writer);
 
     auto user_mention_client = _user_mention_client_pool->Pop();
     if (!user_mention_client) {
@@ -125,7 +125,7 @@ void TextHandler::ComposeText(
       LOG(error) << "Failed HTTP call to user-mention-service: " << e.what();
       throw;
     }
-    user_mention_span->Finish();
+    // user_mention_span->Finish();
     std::vector<nlohmann::json> result_mentions;
     if (resp_json.contains("user_mentions")) {
       for (auto &item : resp_json["user_mentions"]) {
@@ -169,7 +169,7 @@ void TextHandler::ComposeText(
   user_mentions_out = user_mentions;
   urls_out = target_urls;
   updated_text = updated_text_;
-  span->Finish();
+  // span->Finish();
 }
 
 }  // namespace social_network

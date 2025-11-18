@@ -35,11 +35,11 @@ void OnReceivedWorker(const AMQP::Message &msg) {
     }
 
     // Jaeger tracing
-    TextMapReader span_reader(carrier);
-    auto parent_span = opentracing::Tracer::Global()->Extract(span_reader);
-    auto span = opentracing::Tracer::Global()->StartSpan(
-        "write_home_timeline_server",
-        {opentracing::ChildOf(parent_span->get())});
+    // TextMapReader span_reader(carrier);
+    // auto parent_span = opentracing::Tracer::Global()->Extract(span_reader);
+    // auto span = opentracing::Tracer::Global()->StartSpan(
+    //     "write_home_timeline_server",
+    //     {opentracing::ChildOf(parent_span->get())});
 
     // Extract information from rabbitmq messages
     int64_t user_id = msg_json["user_id"];
@@ -49,15 +49,15 @@ void OnReceivedWorker(const AMQP::Message &msg) {
     std::vector<int64_t> user_mentions_id = msg_json["user_mentions_id"];
 
     // Find followers of the user
-    auto followers_span = opentracing::Tracer::Global()->StartSpan(
-        "get_followers_client", {opentracing::ChildOf(&span->context())});
-    std::map<std::string, std::string> writer_text_map;
-    TextMapWriter writer(writer_text_map);
-    opentracing::Tracer::Global()->Inject(followers_span->context(), writer);
+    // auto followers_span = opentracing::Tracer::Global()->StartSpan(
+    //     "get_followers_client", {opentracing::ChildOf(&span->context())});
+    // std::map<std::string, std::string> writer_text_map;
+    // TextMapWriter writer(writer_text_map);
+    // opentracing::Tracer::Global()->Inject(followers_span->context(), writer);
 
     auto social_graph_client = _social_graph_client_pool->Pop();
     if (!social_graph_client) {
-      followers_span->Finish();
+      // followers_span->Finish();
       throw std::runtime_error("Failed to connect to social-graph-service");
     }
     std::vector<int64_t> followers_id;
@@ -70,20 +70,20 @@ void OnReceivedWorker(const AMQP::Message &msg) {
     } catch (...) {
       LOG(error) << "Failed to get followers from social-graph-service";
       _social_graph_client_pool->Remove(social_graph_client);
-      followers_span->Finish();
+      // followers_span->Finish();
       throw;
     }
     _social_graph_client_pool->Keepalive(social_graph_client);
-    followers_span->Finish();
+    // followers_span->Finish();
 
     std::set<int64_t> followers_id_set(followers_id.begin(),
                                        followers_id.end());
     followers_id_set.insert(user_mentions_id.begin(), user_mentions_id.end());
 
     // Update Redis ZSet
-    auto redis_span = opentracing::Tracer::Global()->StartSpan(
-        "write_home_timeline_redis_update_client",
-        {opentracing::ChildOf(&span->context())});
+    // auto redis_span = opentracing::Tracer::Global()->StartSpan(
+    //     "write_home_timeline_redis_update_client",
+    //     {opentracing::ChildOf(&span->context())});
     auto redis_client_wrapper = _redis_client_pool->Pop();
     if (!redis_client_wrapper) {
       throw std::runtime_error("Cannot connect to Redis server");
@@ -100,7 +100,7 @@ void OnReceivedWorker(const AMQP::Message &msg) {
     }
 
     redis_client->sync_commit();
-    redis_span->Finish();
+    // redis_span->Finish();
     _redis_client_pool->Keepalive(redis_client_wrapper);
   } catch (...) {
     LOG(error) << "OnReveived worker error";

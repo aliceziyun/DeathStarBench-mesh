@@ -7,10 +7,11 @@ for dir in */; do
         echo "Launching service in $dir"
 
         # copy config file
-        cp ./service-config.json "$dir/build/"
+        # mkdir -p "$dir/build/config"
+        # cp ./service-config.json "$dir/build/config/service-config.json"
 
         cd "$dir/build"
-        echo "./$(basename "$dir")"
+        ./$(basename "$dir") &
         cd ../..
     fi
 done

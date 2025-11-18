@@ -8,7 +8,7 @@
 
 #include "../social_network_types.h"
 #include "../logger.h"
-#include "../tracing.h"
+// #include "../tracing.h"
 #include "../utils.h"
 
 namespace social_network {
@@ -39,14 +39,14 @@ void UserMentionHandler::ComposeUserMentions(
     const std::vector<std::string> &usernames,
     const std::map<std::string, std::string> &carrier) {
   // Initialize a span
-  TextMapReader reader(carrier);
-  std::map<std::string, std::string> writer_text_map;
-  TextMapWriter writer(writer_text_map);
-  auto parent_span = opentracing::Tracer::Global()->Extract(reader);
-  auto span = opentracing::Tracer::Global()->StartSpan(
-      "compose_user_mentions_server",
-      {opentracing::ChildOf(parent_span->get())});
-  opentracing::Tracer::Global()->Inject(span->context(), writer);
+  // TextMapReader reader(carrier);
+  // std::map<std::string, std::string> writer_text_map;
+  // TextMapWriter writer(writer_text_map);
+  // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
+  // auto span = opentracing::Tracer::Global()->StartSpan(
+  //     "compose_user_mentions_server",
+  //     {opentracing::ChildOf(parent_span->get())});
+  // opentracing::Tracer::Global()->Inject(span->context(), writer);
 
   std::vector<UserMention> user_mentions;
   if (!usernames.empty()) {
@@ -85,7 +85,7 @@ void UserMentionHandler::ComposeUserMentions(
       LOG(error) << "Cannot get usernames of request " << req_id << ": "
                  << memcached_strerror(client, rc);
       memcached_pool_push(_memcached_client_pool, client);
-      get_span->Finish();
+      // get_span->Finish();
       throw std::runtime_error("memcached mget failed");
     }
 
@@ -108,7 +108,7 @@ void UserMentionHandler::ComposeUserMentions(
         memcached_quit(client);
         memcached_pool_push(_memcached_client_pool, client);
         LOG(error) << "Cannot get components of request " << req_id;
-        get_span->Finish();
+        // get_span->Finish();
         throw std::runtime_error("memcached fetch failed");
       }
       UserMention new_user_mention;
@@ -124,7 +124,7 @@ void UserMentionHandler::ComposeUserMentions(
     }
     memcached_quit(client);
     memcached_pool_push(_memcached_client_pool, client);
-    get_span->Finish();
+    // get_span->Finish();
     for (int i = 0; i < usernames.size(); ++i) {
       delete keys[i];
     }
@@ -183,7 +183,7 @@ void UserMentionHandler::ComposeUserMentions(
           mongoc_cursor_destroy(cursor);
           mongoc_collection_destroy(collection);
           mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-          find_span->Finish();
+          // find_span->Finish();
           throw std::runtime_error("mongodb item incomplete");
         }
         if (bson_iter_init_find(&iter, doc, "username")) {
@@ -194,7 +194,7 @@ void UserMentionHandler::ComposeUserMentions(
           mongoc_cursor_destroy(cursor);
           mongoc_collection_destroy(collection);
           mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-          find_span->Finish();
+          // find_span->Finish();
           throw std::runtime_error("mongodb item incomplete");
         }
         user_mentions.emplace_back(new_user_mention);
@@ -203,12 +203,12 @@ void UserMentionHandler::ComposeUserMentions(
       mongoc_cursor_destroy(cursor);
       mongoc_collection_destroy(collection);
       mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-      find_span->Finish();
+      // find_span->Finish();
     }
   }
 
   _return = user_mentions;
-  span->Finish();
+  // span->Finish();
 }
 
 }  // namespace social_network
