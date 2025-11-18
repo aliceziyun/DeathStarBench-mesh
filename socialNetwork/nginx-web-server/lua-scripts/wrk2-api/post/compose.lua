@@ -15,7 +15,8 @@ function _M.ComposePost()
 
   local tcp = ngx.socket.tcp
 
-  local req_id = tonumber(string.sub(ngx.var.request_id, 0, 15), 16)
+  -- local req_id = tonumber(string.sub(ngx.var.request_id, 0, 15), 16)
+  local req_id = 123
   -- local tracer = bridge_tracer.new_from_global()
   -- local parent_span_context = tracer:binary_extract(ngx.var.opentracing_binary_context)
 
@@ -64,7 +65,7 @@ function _M.ComposePost()
       ", post_type: ", post.post_type)
 
   local body_tbl = {
-    req_id = tostring(req_id),
+    req_id = req_id,
     username = post.username,
     user_id = tonumber(post.user_id),
     text = post.text,
