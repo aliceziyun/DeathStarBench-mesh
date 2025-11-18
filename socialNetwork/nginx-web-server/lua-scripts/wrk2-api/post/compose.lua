@@ -99,6 +99,8 @@ function _M.ComposePost()
     .. "Connection: close\r\n\r\n"
     .. payload
 
+  ngx.log(ngx.ERR, "Sending request to compose-post-service: ", req)
+
   local bytes, send_err = sock:send(req)
   if not bytes then
     ngx.status = ngx.HTTP_BAD_GATEWAY
