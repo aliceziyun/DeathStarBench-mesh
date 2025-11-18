@@ -50,6 +50,13 @@ function _M.ComposePost()
     if ok_decode and type(decoded) == "table" then media_types = decoded end
   end
 
+  ngx.log(ngx.ERR, "Composing post for user_id: ", post.user_id,
+      ", username: ", post.username,
+      ", text length: ", tostring(#post.text),
+      ", media_ids count: ", tostring(#media_ids),
+      ", media_types count: ", tostring(#media_types),
+      ", post_type: ", post.post_type)
+
   local body_tbl = {
     req_id = req_id,
     username = post.username,
@@ -60,8 +67,6 @@ function _M.ComposePost()
     post_type = tonumber(post.post_type),
     carrier = carrier
   }
-
-  ngx.log(ngx.ERR, "ComposePost payload: ", body_tbl)
 
   local payload = cjson.encode(body_tbl)
 
