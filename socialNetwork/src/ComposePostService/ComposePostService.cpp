@@ -146,6 +146,7 @@ int main(int argc, char *argv[]) {
             res.set_content("{\"status\":\"ok\"}", "application/json");
         } catch (std::exception &e) {
             res.status = 500;
+            LOG(error) << "Error occurred while composing post: " << e.what();
             res.set_content("{\"error\":\"exception\"}", "application/json");
         }
     });

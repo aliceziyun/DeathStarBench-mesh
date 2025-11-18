@@ -20,7 +20,6 @@ function _M.ComposePost()
   -- local tracer = bridge_tracer.new_from_global()
   -- local parent_span_context = tracer:binary_extract(ngx.var.opentracing_binary_context)
 
-
   -- Read and parse JSON body instead of form args
   ngx.req.read_body()
   local raw = ngx.req.get_body_data()
@@ -57,12 +56,12 @@ function _M.ComposePost()
   local media_ids = (type(post.media_ids) == 'table') and post.media_ids or {}
   local media_types = (type(post.media_types) == 'table') and post.media_types or {}
 
-  ngx.log(ngx.ERR, "Composing post for user_id: ", post.user_id,
-      ", username: ", post.username,
-      ", text length: ", tostring(#post.text),
-      ", media_ids count: ", tostring(#media_ids),
-      ", media_types count: ", tostring(#media_types),
-      ", post_type: ", post.post_type)
+  -- ngx.log(ngx.ERR, "Composing post for user_id: ", post.user_id,
+  --     ", username: ", post.username,
+  --     ", text length: ", tostring(#post.text),
+  --     ", media_ids count: ", tostring(#media_ids),
+  --     ", media_types count: ", tostring(#media_types),
+  --     ", post_type: ", post.post_type)
 
   local body_tbl = {
     req_id = req_id,
@@ -99,8 +98,6 @@ function _M.ComposePost()
     .. "Content-Length: " .. #payload .. "\r\n"
     .. "Connection: close\r\n\r\n"
     .. payload
-
-  ngx.log(ngx.ERR, "Sending request to compose-post-service: ", req)
 
   local bytes, send_err = sock:send(req)
   if not bytes then
