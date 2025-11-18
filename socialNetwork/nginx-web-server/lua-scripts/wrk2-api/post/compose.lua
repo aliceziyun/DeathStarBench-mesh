@@ -61,7 +61,7 @@ function _M.ComposePost()
     carrier = carrier
   }
 
-  print("ComposePost payload: ", body_tbl)
+  ngx.log(ngx.ERR, "ComposePost payload: ", body_tbl)
 
   local payload = cjson.encode(body_tbl)
 
