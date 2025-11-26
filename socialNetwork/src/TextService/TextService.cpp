@@ -8,7 +8,8 @@
  #include "../ClientPool.h"
  #include "../logger.h"
  #include "../tracing.h"
- #include "TextHandler.h"
+#include "TextHandler.h"
+#include "../RequestHeaderHelper.h"
 
  using json = nlohmann::json;
  using namespace social_network;
@@ -48,18 +49,18 @@ void sigintHandler(int sig) { exit(EXIT_SUCCESS); }
      TextHandler handler(&url_client_pool, &user_mention_client_pool);
      httplib::Server server;
 
-     server.Post("/ComposeText", [&](const httplib::Request &req, httplib::Response &res) {
+    server.Post("/ComposeText", [&](const httplib::Request &req, httplib::Response &res) {
          try {
              auto j = json::parse(req.body);
              int64_t req_id = j["req_id"];
              std::string text = j["text"];
-             std::map<std::string, std::string> carrier;
-             if (j.contains("carrier")) carrier = j["carrier"].get<std::map<std::string, std::string>>();
+            // Extract x-request-id from incoming HTTP headers; do not trust body/carrier
+            std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
 
              std::string updated_text;
              std::vector<json> urls_out;
              std::vector<json> user_mentions_out;
-             handler.ComposeText(updated_text, urls_out, user_mentions_out, req_id, text, carrier);
+            handler.ComposeText(updated_text, urls_out, user_mentions_out, req_id, text, x_request_id);
              json resp = {{"text", updated_text}, {"urls", urls_out}, {"user_mentions", user_mentions_out}};
              res.set_content(resp.dump(), "application/json");
          } catch (const std::exception &e) {

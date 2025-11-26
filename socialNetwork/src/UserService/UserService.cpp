@@ -10,6 +10,7 @@
 #include "../tracing.h"
 #include "../HttpClientWrapper.h"
 #include "UserHandler.h"
+#include "../RequestHeaderHelper.h"
 
 using json = nlohmann::json;
 using namespace social_network;
@@ -98,14 +99,11 @@ int main(int argc, char *argv[]) {
                   int64_t req_id = j["req_id"].get<int64_t>();
                   int64_t user_id = j["user_id"].get<int64_t>();
                   std::string username = j["username"].get<std::string>();
-                  std::map<std::string, std::string> carrier;
-                  if (j.contains("carrier"))
-                    carrier =
-                        j["carrier"].get<std::map<std::string, std::string>>();
+                  std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
 
                   Creator out;
                   handler.ComposeCreatorWithUserId(out, req_id, user_id,
-                                                   username, carrier);
+                                                   username, x_request_id);
                   json resp = {{"user_id", out.user_id},
                                {"username", out.username}};
                   res.set_content(resp.dump(), "application/json");
@@ -126,11 +124,9 @@ int main(int argc, char *argv[]) {
         username = j["user_name"].get<std::string>();
       else
         username = j["username"].get<std::string>();
-      std::map<std::string, std::string> carrier;
-      if (j.contains("carrier"))
-        carrier = j["carrier"].get<std::map<std::string, std::string>>();
+      std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
 
-      auto uid = handler.GetUserId(req_id, username, carrier);
+      auto uid = handler.GetUserId(req_id, username, x_request_id);
       res.set_content(json({{"user_id", uid}}).dump(), "application/json");
     } catch (const std::exception &e) {
       res.status = 500;
@@ -147,11 +143,9 @@ int main(int argc, char *argv[]) {
       auto last_name = j["last_name"].get<std::string>();
       auto username = j["username"].get<std::string>();
       auto password = j["password"].get<std::string>();
-      std::map<std::string, std::string> carrier;
-      if (j.contains("carrier"))
-        carrier = j["carrier"].get<std::map<std::string, std::string>>();
+      std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
       handler.RegisterUser(req_id, first_name, last_name, username, password,
-                           carrier);
+                           x_request_id);
       res.set_content(json({{"status", "ok"}}).dump(), "application/json");
     } catch (const std::exception &e) {
       res.status = 500;
@@ -169,12 +163,10 @@ int main(int argc, char *argv[]) {
                   auto username = j["username"].get<std::string>();
                   auto password = j["password"].get<std::string>();
                   int64_t user_id = j["user_id"].get<int64_t>();
-                  std::map<std::string, std::string> carrier;
-                  if (j.contains("carrier"))
-                    carrier = j["carrier"].get<std::map<std::string, std::string>>();
+                  std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
                   handler.RegisterUserWithId(req_id, first_name, last_name,
                                              username, password, user_id,
-                                             carrier);
+                                             x_request_id);
                   res.set_content(json({{"status", "ok"}}).dump(),
                                   "application/json");
                 } catch (const std::exception &e) {

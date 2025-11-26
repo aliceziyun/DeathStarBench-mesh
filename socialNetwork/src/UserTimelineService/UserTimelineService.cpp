@@ -12,6 +12,7 @@
 #include "../utils_mongodb.h"
 #include "../utils_redis.h"
 #include "UserTimelineHandler.h"
+#include "../RequestHeaderHelper.h"
 
 using json = nlohmann::json;
 using namespace social_network;
@@ -113,11 +114,9 @@ int main(int argc, char *argv[]) {
                     int64_t post_id = j["post_id"].get<int64_t>();
                     int64_t user_id = j["user_id"].get<int64_t>();
                     int64_t timestamp = j["timestamp"].get<int64_t>();
-                    std::map<std::string, std::string> carrier;
-                    if (j.contains("carrier"))
-                      carrier = j["carrier"].get<std::map<std::string, std::string>>();
+                    std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
                     handler.WriteUserTimeline(req_id, post_id, user_id, timestamp,
-                                              carrier);
+                                              x_request_id);
                     res.set_content(json({{"status", "ok"}}).dump(),
                                     "application/json");
                   } catch (const std::exception &e) {
@@ -134,12 +133,10 @@ int main(int argc, char *argv[]) {
                     int64_t user_id = j["user_id"].get<int64_t>();
                     int start = j["start"].get<int>();
                     int stop = j["stop"].get<int>();
-                    std::map<std::string, std::string> carrier;
-                    if (j.contains("carrier"))
-                      carrier = j["carrier"].get<std::map<std::string, std::string>>();
+                    std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
                     std::vector<Post> posts;
                     handler.ReadUserTimeline(posts, req_id, user_id, start, stop,
-                                             carrier);
+                                             x_request_id);
                     json out;
                     out["posts"] = json::array();
                     for (auto &p : posts) {
@@ -198,11 +195,9 @@ int main(int argc, char *argv[]) {
                       int64_t post_id = j["post_id"].get<int64_t>();
                       int64_t user_id = j["user_id"].get<int64_t>();
                       int64_t timestamp = j["timestamp"].get<int64_t>();
-                      std::map<std::string, std::string> carrier;
-                      if (j.contains("carrier"))
-                        carrier = j["carrier"].get<std::map<std::string, std::string>>();
+                      std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
                       handler.WriteUserTimeline(req_id, post_id, user_id, timestamp,
-                                                carrier);
+                                                x_request_id);
                       res.set_content(json({{"status", "ok"}}).dump(),
                                       "application/json");
                     } catch (const std::exception &e) {
@@ -219,12 +214,10 @@ int main(int argc, char *argv[]) {
                       int64_t user_id = j["user_id"].get<int64_t>();
                       int start = j["start"].get<int>();
                       int stop = j["stop"].get<int>();
-                      std::map<std::string, std::string> carrier;
-                      if (j.contains("carrier"))
-                        carrier = j["carrier"].get<std::map<std::string, std::string>>();
+                      std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
                       std::vector<Post> posts;
                       handler.ReadUserTimeline(posts, req_id, user_id, start, stop,
-                                               carrier);
+                                               x_request_id);
                       json out;
                       out["posts"] = json::array();
                       for (auto &p : posts) {
@@ -282,11 +275,9 @@ int main(int argc, char *argv[]) {
                     int64_t post_id = j["post_id"].get<int64_t>();
                     int64_t user_id = j["user_id"].get<int64_t>();
                     int64_t timestamp = j["timestamp"].get<int64_t>();
-                    std::map<std::string, std::string> carrier;
-                    if (j.contains("carrier"))
-                      carrier = j["carrier"].get<std::map<std::string, std::string>>();
+                    std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
                     handler.WriteUserTimeline(req_id, post_id, user_id, timestamp,
-                                              carrier);
+                                              x_request_id);
                     res.set_content(json({{"status", "ok"}}).dump(),
                                     "application/json");
                   } catch (const std::exception &e) {
@@ -303,12 +294,10 @@ int main(int argc, char *argv[]) {
                     int64_t user_id = j["user_id"].get<int64_t>();
                     int start = j["start"].get<int>();
                     int stop = j["stop"].get<int>();
-                    std::map<std::string, std::string> carrier;
-                    if (j.contains("carrier"))
-                      carrier = j["carrier"].get<std::map<std::string, std::string>>();
+                    std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
                     std::vector<Post> posts;
                     handler.ReadUserTimeline(posts, req_id, user_id, start, stop,
-                                             carrier);
+                                             x_request_id);
                     json out;
                     out["posts"] = json::array();
                     for (auto &p : posts) {

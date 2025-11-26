@@ -14,6 +14,7 @@
 #include "../ClientPool.h"
 #include "../HttpClientWrapper.h"
 #include "../logger.h"
+#include "../RequestHeaderHelper.h"
 // #include "../tracing.h"  // Tracing disabled
 #include "../social_network_types.h"
 
@@ -37,10 +38,10 @@ class UserTimelineHandler {
 
   void WriteUserTimeline(
     int64_t req_id, int64_t post_id, int64_t user_id, int64_t timestamp,
-    const std::map<std::string, std::string> &carrier);
+    const std::string &x_request_id);
 
   void ReadUserTimeline(std::vector<Post> &, int64_t, int64_t, int, int,
-            const std::map<std::string, std::string> &);
+            const std::string &x_request_id);
 
  private:
   Redis *_redis_client_pool;
@@ -89,11 +90,11 @@ bool UserTimelineHandler::IsRedisReplicationEnabled() {
 }
 
 void UserTimelineHandler::WriteUserTimeline(
-    int64_t req_id, int64_t post_id, int64_t user_id, int64_t timestamp,
-    const std::map<std::string, std::string> &carrier) {
+  int64_t req_id, int64_t post_id, int64_t user_id, int64_t timestamp,
+  const std::string &x_request_id) {
   // Tracing disabled
   // TextMapReader reader(carrier);
-  // std::map<std::string, std::string> writer_text_map;
+  // // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(
@@ -177,11 +178,11 @@ void UserTimelineHandler::WriteUserTimeline(
 }
 
 void UserTimelineHandler::ReadUserTimeline(
-    std::vector<Post> &_return, int64_t req_id, int64_t user_id, int start,
-    int stop, const std::map<std::string, std::string> &carrier) {
+  std::vector<Post> &_return, int64_t req_id, int64_t user_id, int start,
+  int stop, const std::string &x_request_id) {
   // Tracing disabled
   // TextMapReader reader(carrier);
-  std::map<std::string, std::string> writer_text_map;
+  // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(
@@ -299,9 +300,11 @@ void UserTimelineHandler::ReadUserTimeline(
         std::vector<Post> _return_posts;
         try {
           nlohmann::json req_json = {
-              {"req_id", req_id}, {"post_ids", post_ids},
-              {"carrier", writer_text_map}};
-          auto res = post_client->PostJson("/ReadPosts", req_json);
+              {"req_id", req_id}, {"post_ids", post_ids}};
+          auto res = post_client->PostJson(
+            "/ReadPosts",
+            req_json,
+            BuildRequestIdHeader(x_request_id));
           for (auto &item : res["posts"]) {
             Post p;
             p.req_id = item["req_id"];

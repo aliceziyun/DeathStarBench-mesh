@@ -13,6 +13,7 @@
 #include "../HttpClientWrapper.h"
 #include "../logger.h"
 #include "../tracing.h"
+#include "../RequestHeaderHelper.h"
 
 namespace social_network {
 using json = nlohmann::json;
@@ -36,7 +37,7 @@ class ComposePostHandler {
                    const std::vector<int64_t> &media_ids,
                    const std::vector<std::string> &media_types,
                    PostType::type post_type,
-                   const std::map<std::string, std::string> &carrier);
+                   const std::string &x_request_id);
 
  private:
   ClientPool<HttpClientWrapper> *_post_storage_client_pool;
@@ -49,30 +50,30 @@ class ComposePostHandler {
   ClientPool<HttpClientWrapper> *_home_timeline_client_pool;
 
   void _UploadUserTimelineHelper(
-      int64_t req_id, int64_t post_id, int64_t user_id, int64_t timestamp,
-      const std::map<std::string, std::string> &carrier);
+    int64_t req_id, int64_t post_id, int64_t user_id, int64_t timestamp,
+    const std::string &x_request_id);
 
   void _UploadPostHelper(int64_t req_id, const Post &post,
-                         const std::map<std::string, std::string> &carrier);
+                         const std::string &x_request_id);
 
   void _UploadHomeTimelineHelper(
-      int64_t req_id, int64_t post_id, int64_t user_id, int64_t timestamp,
-      const std::vector<int64_t> &user_mentions_id,
-      const std::map<std::string, std::string> &carrier);
+    int64_t req_id, int64_t post_id, int64_t user_id, int64_t timestamp,
+    const std::vector<int64_t> &user_mentions_id,
+    const std::string &x_request_id);
 
   Creator _ComposeCreaterHelper(
-      int64_t req_id, int64_t user_id, const std::string &username,
-      const std::map<std::string, std::string> &carrier);
+    int64_t req_id, int64_t user_id, const std::string &username,
+    const std::string &x_request_id);
   TextServiceReturn _ComposeTextHelper(
-      int64_t req_id, const std::string &text,
-      const std::map<std::string, std::string> &carrier);
+    int64_t req_id, const std::string &text,
+    const std::string &x_request_id);
   std::vector<Media> _ComposeMediaHelper(
-      int64_t req_id, const std::vector<std::string> &media_types,
-      const std::vector<int64_t> &media_ids,
-      const std::map<std::string, std::string> &carrier);
+    int64_t req_id, const std::vector<std::string> &media_types,
+    const std::vector<int64_t> &media_ids,
+    const std::string &x_request_id);
   int64_t _ComposeUniqueIdHelper(
-      int64_t req_id, PostType::type post_type,
-      const std::map<std::string, std::string> &carrier);
+    int64_t req_id, PostType::type post_type,
+    const std::string &x_request_id);
 };
 
 ComposePostHandler::ComposePostHandler(
@@ -97,13 +98,13 @@ ComposePostHandler::ComposePostHandler(
 }
 
 Creator ComposePostHandler::_ComposeCreaterHelper(
-    int64_t req_id, int64_t user_id, const std::string &username,
-    const std::map<std::string, std::string> &carrier) {
-  TextMapReader reader(carrier);
+  int64_t req_id, int64_t user_id, const std::string &username,
+  const std::string &x_request_id) {
+  // TextMapReader reader(carrier);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(
       // "compose_creator_client", {opentracing::ChildOf(parent_span->get())});
-  std::map<std::string, std::string> writer_text_map;
+  // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // opentracing::Tracer::Global()->Inject(span->context(), writer);
 
@@ -120,10 +121,14 @@ Creator ComposePostHandler::_ComposeCreaterHelper(
       {"req_id", req_id},
       {"user_id", user_id},
       {"username", username},
-      {"carrier", writer_text_map}
+      // {"carrier", writer_text_map}
     };
 
-    auto res = user_client->PostJson("/ComposeCreatorWithUserId", req_json);
+  // Propagate x-request-id downstream via HTTP header using req_id as value
+  auto res = user_client->PostJson(
+    "/ComposeCreatorWithUserId",
+    req_json,
+    BuildRequestIdHeader(x_request_id));
     _return_creator.user_id = res["user_id"];
     _return_creator.username = res["username"];
   } catch (...) {
@@ -138,13 +143,13 @@ Creator ComposePostHandler::_ComposeCreaterHelper(
 }
 
 TextServiceReturn ComposePostHandler::_ComposeTextHelper(
-    int64_t req_id, const std::string &text,
-    const std::map<std::string, std::string> &carrier) {
+  int64_t req_id, const std::string &text,
+  const std::string &x_request_id) {
   // TextMapReader reader(carrier);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(
       // "compose_text_client", {opentracing::ChildOf(parent_span->get())});
-  std::map<std::string, std::string> writer_text_map;
+  // // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // opentracing::Tracer::Global()->Inject(span->context(), writer);
 
@@ -160,10 +165,13 @@ TextServiceReturn ComposePostHandler::_ComposeTextHelper(
     nlohmann::json req_json = {
       {"req_id", req_id},
       {"text", text},
-      {"carrier", writer_text_map}
+      // {"carrier", writer_text_map}
     };
 
-    auto res = text_client->PostJson("/ComposeText", req_json);
+    auto res = text_client->PostJson(
+      "/ComposeText",
+      req_json,
+      BuildRequestIdHeader(x_request_id));
     _return_text.text = res["text"];
     for (auto &item : res["user_mentions"]) {
       UserMention user_mention;
@@ -189,14 +197,14 @@ TextServiceReturn ComposePostHandler::_ComposeTextHelper(
 }
 
 std::vector<Media> ComposePostHandler::_ComposeMediaHelper(
-    int64_t req_id, const std::vector<std::string> &media_types,
-    const std::vector<int64_t> &media_ids,
-    const std::map<std::string, std::string> &carrier) {
-  TextMapReader reader(carrier);
+  int64_t req_id, const std::vector<std::string> &media_types,
+  const std::vector<int64_t> &media_ids,
+  const std::string &x_request_id) {
+  // TextMapReader reader(carrier);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // // auto span = opentracing::Tracer::Global()->StartSpan(
       // "compose_media_client", {opentracing::ChildOf(parent_span->get())});
-  std::map<std::string, std::string> writer_text_map;
+  // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // opentracing::Tracer::Global()->Inject(span->context(), writer);
 
@@ -213,10 +221,13 @@ std::vector<Media> ComposePostHandler::_ComposeMediaHelper(
       {"req_id", req_id},
       {"media_types", media_types},
       {"media_ids", media_ids},
-      {"carrier", writer_text_map}
+      // {"carrier", writer_text_map}
     };
 
-    auto res = media_client->PostJson("/ComposeMedia", req_json);
+    auto res = media_client->PostJson(
+      "/ComposeMedia",
+      req_json,
+      BuildRequestIdHeader(x_request_id));
     for (auto &item : res["media"]) {
       Media media;
       media.media_id = item["media_id"];
@@ -235,13 +246,13 @@ std::vector<Media> ComposePostHandler::_ComposeMediaHelper(
 }
 
 int64_t ComposePostHandler::_ComposeUniqueIdHelper(
-    int64_t req_id, const PostType::type post_type,
-    const std::map<std::string, std::string> &carrier) {
-  TextMapReader reader(carrier);
+  int64_t req_id, const PostType::type post_type,
+  const std::string &x_request_id) {
+  // TextMapReader reader(carrier);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(
       // "compose_unique_id_client", {opentracing::ChildOf(parent_span->get())});
-  std::map<std::string, std::string> writer_text_map;
+  // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // opentracing::Tracer::Global()->Inject(span->context(), writer);
 
@@ -257,10 +268,13 @@ int64_t ComposePostHandler::_ComposeUniqueIdHelper(
     nlohmann::json req_json = {
       {"req_id", req_id},
       {"post_type", static_cast<int>(post_type)},
-      {"carrier", writer_text_map}
+      // {"carrier", writer_text_map}
     };
 
-    auto res = unique_id_client->PostJson("/ComposeUniqueId", req_json);
+    auto res = unique_id_client->PostJson(
+      "/ComposeUniqueId",
+      req_json,
+      BuildRequestIdHeader(x_request_id));
     _return_unique_id = res["unique_id"];
   } catch (...) {
     LOG(error) << "Failed to send compose-unique_id to unique_id-service";
@@ -274,13 +288,13 @@ int64_t ComposePostHandler::_ComposeUniqueIdHelper(
 }
 
 void ComposePostHandler::_UploadPostHelper(
-    int64_t req_id, const Post &post,
-    const std::map<std::string, std::string> &carrier) {
-  TextMapReader reader(carrier);
+  int64_t req_id, const Post &post,
+  const std::string &x_request_id) {
+  // TextMapReader reader(carrier);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(
       // "store_post_client", {opentracing::ChildOf(parent_span->get())});
-  std::map<std::string, std::string> writer_text_map;
+  // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // opentracing::Tracer::Global()->Inject(span->context(), writer);
 
@@ -306,9 +320,12 @@ void ComposePostHandler::_UploadPostHelper(
           {"timestamp", post.timestamp},
           {"post_type", static_cast<int>(post.post_type)}
       }},
-      {"carrier", writer_text_map}
+      // {"carrier", writer_text_map}
     };
-    auto res = post_storage_client->PostJson("/StorePost", req_json);
+    auto res = post_storage_client->PostJson(
+      "/StorePost",
+      req_json,
+      BuildRequestIdHeader(x_request_id));
   } catch (...) {
     _post_storage_client_pool->Remove(post_storage_client);
     LOG(error) << "Failed to store post to post-storage-service";
@@ -320,13 +337,13 @@ void ComposePostHandler::_UploadPostHelper(
 }
 
 void ComposePostHandler::_UploadUserTimelineHelper(
-    int64_t req_id, int64_t post_id, int64_t user_id, int64_t timestamp,
-    const std::map<std::string, std::string> &carrier) {
-  TextMapReader reader(carrier);
+  int64_t req_id, int64_t post_id, int64_t user_id, int64_t timestamp,
+  const std::string &x_request_id) {
+  // TextMapReader reader(carrier);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(
       // "write_user_timeline_client", {opentracing::ChildOf(parent_span->get())});
-  std::map<std::string, std::string> writer_text_map;
+  // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // opentracing::Tracer::Global()->Inject(span->context(), writer);
 
@@ -342,9 +359,12 @@ void ComposePostHandler::_UploadUserTimelineHelper(
       {"post_id", post_id},
       {"user_id", user_id},
       {"timestamp", timestamp},
-      {"carrier", writer_text_map}
+      // {"carrier", writer_text_map}
     };
-    user_timeline_client->PostJson("/WriteUserTimeline", req_json);
+    user_timeline_client->PostJson(
+      "/WriteUserTimeline",
+      req_json,
+      BuildRequestIdHeader(x_request_id));
   } catch (...) {
     _user_timeline_client_pool->Remove(user_timeline_client);
     throw;
@@ -355,14 +375,14 @@ void ComposePostHandler::_UploadUserTimelineHelper(
 }
 
 void ComposePostHandler::_UploadHomeTimelineHelper(
-    int64_t req_id, int64_t post_id, int64_t user_id, int64_t timestamp,
-    const std::vector<int64_t> &user_mentions_id,
-    const std::map<std::string, std::string> &carrier) {
-  TextMapReader reader(carrier);
+  int64_t req_id, int64_t post_id, int64_t user_id, int64_t timestamp,
+  const std::vector<int64_t> &user_mentions_id,
+  const std::string &x_request_id) {
+  // TextMapReader reader(carrier);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(
       // "write_home_timeline_client", {opentracing::ChildOf(parent_span->get())});
-  std::map<std::string, std::string> writer_text_map;
+  // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // opentracing::Tracer::Global()->Inject(span->context(), writer);
 
@@ -379,9 +399,12 @@ void ComposePostHandler::_UploadHomeTimelineHelper(
       {"user_id", user_id},
       {"timestamp", timestamp},
       {"user_mentions_id", user_mentions_id},
-      {"carrier", writer_text_map}
+      // {"carrier", writer_text_map}
     };
-    home_timeline_client->PostJson("/WriteHomeTimeline", req_json);
+    home_timeline_client->PostJson(
+      "/WriteHomeTimeline",
+      req_json,
+      BuildRequestIdHeader(x_request_id));
   } catch (...) {
     _home_timeline_client_pool->Remove(home_timeline_client);
     LOG(error) << "Failed to write home timeline to home-timeline-service";
@@ -393,30 +416,31 @@ void ComposePostHandler::_UploadHomeTimelineHelper(
 }
 
 void ComposePostHandler::ComposePost(
-    const int64_t req_id, const std::string &username, int64_t user_id,
-    const std::string &text, const std::vector<int64_t> &media_ids,
-    const std::vector<std::string> &media_types, const PostType::type post_type,
-    const std::map<std::string, std::string> &carrier) {
-  TextMapReader reader(carrier);
+  const int64_t req_id, const std::string &username, int64_t user_id,
+  const std::string &text, const std::vector<int64_t> &media_ids,
+  const std::vector<std::string> &media_types, const PostType::type post_type,
+  const std::string &x_request_id) {
+  // TextMapReader reader(carrier);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(
       // "compose_post_server", {opentracing::ChildOf(parent_span->get())});
-  std::map<std::string, std::string> writer_text_map;
+  // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // opentracing::Tracer::Global()->Inject(span->context(), writer);
 
+  // Pass original carrier (contains incoming headers) downstream so x-request-id can be extracted.
   auto text_future =
-      std::async(std::launch::async, &ComposePostHandler::_ComposeTextHelper,
-                 this, req_id, text, writer_text_map);
+    std::async(std::launch::async, &ComposePostHandler::_ComposeTextHelper,
+         this, req_id, text, x_request_id);
   auto creator_future =
-      std::async(std::launch::async, &ComposePostHandler::_ComposeCreaterHelper,
-                 this, req_id, user_id, username, writer_text_map);
+    std::async(std::launch::async, &ComposePostHandler::_ComposeCreaterHelper,
+         this, req_id, user_id, username, x_request_id);
   auto media_future =
-      std::async(std::launch::async, &ComposePostHandler::_ComposeMediaHelper,
-                 this, req_id, media_types, media_ids, writer_text_map);
+    std::async(std::launch::async, &ComposePostHandler::_ComposeMediaHelper,
+         this, req_id, media_types, media_ids, x_request_id);
   auto unique_id_future = std::async(
-      std::launch::async, &ComposePostHandler::_ComposeUniqueIdHelper, this,
-      req_id, post_type, writer_text_map);
+    std::launch::async, &ComposePostHandler::_ComposeUniqueIdHelper, this,
+    req_id, post_type, x_request_id);
 
   Post post;
   auto timestamp =
@@ -451,15 +475,15 @@ void ComposePostHandler::ComposePost(
   //Change _UploadUserTimelineHelper and _UploadHomeTimelineHelper to deferred.
   //To let them start execute after post_future.get() return.
   auto post_future =
-      std::async(std::launch::async, &ComposePostHandler::_UploadPostHelper,
-                 this, req_id, post, writer_text_map);
+    std::async(std::launch::async, &ComposePostHandler::_UploadPostHelper,
+         this, req_id, post, x_request_id);
   auto user_timeline_future = std::async(
-      std::launch::deferred, &ComposePostHandler::_UploadUserTimelineHelper, this,
-      req_id, post.post_id, user_id, timestamp, writer_text_map);
+    std::launch::deferred, &ComposePostHandler::_UploadUserTimelineHelper, this,
+    req_id, post.post_id, user_id, timestamp, x_request_id);
   auto home_timeline_future = std::async(
-      std::launch::deferred, &ComposePostHandler::_UploadHomeTimelineHelper, this,
-      req_id, post.post_id, user_id, timestamp, user_mention_ids,
-      writer_text_map);
+    std::launch::deferred, &ComposePostHandler::_UploadHomeTimelineHelper, this,
+    req_id, post.post_id, user_id, timestamp, user_mention_ids,
+    x_request_id);
 
   // try
   // {

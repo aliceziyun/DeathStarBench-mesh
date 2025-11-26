@@ -9,6 +9,7 @@
 #include "../tracing.h"
 #include "../HttpClientWrapper.h"  // for httplib::Server
 #include "UrlShortenHandler.h"
+#include "../RequestHeaderHelper.h"
 
 using namespace social_network;
 using json = nlohmann::json;
@@ -73,11 +74,10 @@ int main(int argc, char* argv[]) {
       auto j = json::parse(req.body);
       int64_t req_id = j["req_id"].get<int64_t>();
       std::vector<std::string> urls = j["urls"].get<std::vector<std::string>>();
-      std::map<std::string, std::string> carrier;
-      if (j.contains("carrier")) carrier = j["carrier"].get<std::map<std::string, std::string>>();
+  std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
 
       std::vector<Url> out;
-      handler.ComposeUrls(out, req_id, urls, carrier);
+  handler.ComposeUrls(out, req_id, urls, x_request_id);
       json resp = json::object();
       resp["urls"] = json::array();
       for (auto &u : out) {

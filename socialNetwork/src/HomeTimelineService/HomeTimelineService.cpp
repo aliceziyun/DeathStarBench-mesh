@@ -10,6 +10,7 @@
 #include "../utils.h"
 #include "../utils_redis.h"
 #include "HomeTimelineHandler.h"
+#include "../RequestHeaderHelper.h"
 
 using namespace social_network;
 using json = nlohmann::json;
@@ -108,11 +109,11 @@ int main(int argc, char *argv[]) {
                     int64_t timestamp = j["timestamp"];
                     auto user_mentions_id =
                         j["user_mentions_id"].get<std::vector<int64_t>>();
-                    std::map<std::string, std::string> carrier = j["carrier"];
+                    std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
 
                     handler.WriteHomeTimeline(req_id, post_id, user_id,
                                               timestamp, user_mentions_id,
-                                              carrier);
+                                              x_request_id);
                     res.set_content("{\"status\":\"ok\"}",
                                     "application/json");
                   } catch (std::exception &e) {
@@ -130,11 +131,11 @@ int main(int argc, char *argv[]) {
                     int64_t user_id = j["user_id"];
                     int start_idx = j["start_idx"];
                     int stop_idx = j["stop_idx"];
-                    std::map<std::string, std::string> carrier = j["carrier"];
+                    std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
 
                     std::vector<Post> posts;
                     handler.ReadHomeTimeline(posts, req_id, user_id, start_idx,
-                                             stop_idx, carrier);
+                                             stop_idx, x_request_id);
                     json out;
                     out["posts"] = json::array();
                     for (auto &p : posts) {
@@ -195,11 +196,11 @@ int main(int argc, char *argv[]) {
                     int64_t timestamp = j["timestamp"];
                     auto user_mentions_id =
                         j["user_mentions_id"].get<std::vector<int64_t>>();
-                    std::map<std::string, std::string> carrier = j["carrier"];
+                    std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
 
                     handler.WriteHomeTimeline(req_id, post_id, user_id,
                                               timestamp, user_mentions_id,
-                                              carrier);
+                                              x_request_id);
                     res.set_content("{\"status\":\"ok\"}",
                                     "application/json");
                   } catch (std::exception &e) {
@@ -217,11 +218,11 @@ int main(int argc, char *argv[]) {
                     int64_t user_id = j["user_id"];
                     int start_idx = j["start_idx"];
                     int stop_idx = j["stop_idx"];
-                    std::map<std::string, std::string> carrier = j["carrier"];
+                    std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
 
                     std::vector<Post> posts;
                     handler.ReadHomeTimeline(posts, req_id, user_id, start_idx,
-                                             stop_idx, carrier);
+                                             stop_idx, x_request_id);
                     json out;
                     out["posts"] = json::array();
                     for (auto &p : posts) {
@@ -281,11 +282,11 @@ int main(int argc, char *argv[]) {
                     int64_t timestamp = j["timestamp"];
                     auto user_mentions_id =
                         j["user_mentions_id"].get<std::vector<int64_t>>();
-                    std::map<std::string, std::string> carrier = j["carrier"];
+                    std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
 
                     handler.WriteHomeTimeline(req_id, post_id, user_id,
                                               timestamp, user_mentions_id,
-                                              carrier);
+                                              x_request_id);
                     res.set_content("{\"status\":\"ok\"}",
                                     "application/json");
                   } catch (std::exception &e) {
@@ -303,11 +304,11 @@ int main(int argc, char *argv[]) {
                     int64_t user_id = j["user_id"];
                     int start_idx = j["start_idx"];
                     int stop_idx = j["stop_idx"];
-                    std::map<std::string, std::string> carrier = j["carrier"];
+                    std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
 
                     std::vector<Post> posts;
                     handler.ReadHomeTimeline(posts, req_id, user_id, start_idx,
-                                             stop_idx, carrier);
+                                             stop_idx, x_request_id);
                     json out;
                     out["posts"] = json::array();
                     for (auto &p : posts) {

@@ -22,19 +22,19 @@ class MediaHandler {
   void ComposeMedia(std::vector<Media> &_return, int64_t,
                     const std::vector<std::string> &,
                     const std::vector<int64_t> &,
-                    const std::map<std::string, std::string> &);
+                    const std::string &);
 
  private:
 };
 
 void MediaHandler::ComposeMedia(
-    std::vector<Media> &_return, int64_t req_id,
-    const std::vector<std::string> &media_types,
-    const std::vector<int64_t> &media_ids,
-    const std::map<std::string, std::string> &carrier) {
+  std::vector<Media> &_return, int64_t req_id,
+  const std::vector<std::string> &media_types,
+  const std::vector<int64_t> &media_ids,
+  const std::string &x_request_id) {
   // Initialize a span
   // TextMapReader reader(carrier);
-  // std::map<std::string, std::string> writer_text_map;
+  // // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(

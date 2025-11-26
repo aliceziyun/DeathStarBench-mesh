@@ -135,18 +135,23 @@ int main(int argc, char *argv[]) {
             std::string username = j["username"];
             int64_t user_id = j["user_id"];
             std::string text = j["text"];
-            auto media_ids = j["media_ids"].get<std::vector<int64_t>>();
+            std::vector<int64_t> media_ids;
+            for (const auto& id : j["media_ids"]) {
+                media_ids.push_back(std::stoll(id.get<std::string>()));
+            }
             auto media_types = j["media_types"].get<std::vector<std::string>>();
             PostType::type post_type = (PostType::type) j["post_type"].get<int>();
-            std::map<std::string, std::string> carrier = j["carrier"];
+
+            // extract x-request-id (case-insensitive) from headers
+            std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
 
             handler.ComposePost(req_id, username, user_id, text,
-                                media_ids, media_types, post_type, carrier);
+                                media_ids, media_types, post_type, x_request_id);
 
             res.set_content("{\"status\":\"ok\"}", "application/json");
         } catch (std::exception &e) {
             res.status = 500;
-            LOG(error) << "Error occurred while composing post: " << e.what();
+            LOG(error) << "Exception occurred: " << e.what();
             res.set_content("{\"error\":\"exception\"}", "application/json");
         }
     });

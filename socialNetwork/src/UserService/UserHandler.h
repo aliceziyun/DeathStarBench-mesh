@@ -18,6 +18,7 @@
 #include "../ClientPool.h"
 #include "../HttpClientWrapper.h"
 #include "../logger.h"
+#include "../RequestHeaderHelper.h"
 // #include "../tracing.h"  // Tracing disabled
 
 // Custom Epoch (January 1, 2018 Midnight GMT = 2018-01-01T00:00:00Z)
@@ -73,22 +74,22 @@ class UserHandler {
         ClientPool<HttpClientWrapper> *);
   ~UserHandler() = default;
   void RegisterUser(int64_t, const std::string &, const std::string &,
-          const std::string &, const std::string &,
-          const std::map<std::string, std::string> &);
+    const std::string &, const std::string &,
+    const std::string &);
   void RegisterUserWithId(int64_t, const std::string &, const std::string &,
-                          const std::string &, const std::string &, int64_t,
-              const std::map<std::string, std::string> &);
+        const std::string &, const std::string &, int64_t,
+        const std::string &);
 
   void ComposeCreatorWithUserId(
       Creator &, int64_t, int64_t, const std::string &,
-    const std::map<std::string, std::string> &);
+    const std::string &);
   void ComposeCreatorWithUsername(
     Creator &, int64_t, const std::string &,
-    const std::map<std::string, std::string> &);
+    const std::string &);
   void Login(std::string &, int64_t, const std::string &, const std::string &,
-       const std::map<std::string, std::string> &);
+       const std::string &);
   int64_t GetUserId(int64_t, const std::string &,
-          const std::map<std::string, std::string> &);
+          const std::string &);
 
  private:
   std::string _machine_id;
@@ -113,13 +114,13 @@ UserHandler::UserHandler(std::mutex *thread_lock, const std::string &machine_id,
 }
 
 void UserHandler::RegisterUserWithId(
-    const int64_t req_id, const std::string &first_name,
-    const std::string &last_name, const std::string &username,
-    const std::string &password, const int64_t user_id,
-    const std::map<std::string, std::string> &carrier) {
+  const int64_t req_id, const std::string &first_name,
+  const std::string &last_name, const std::string &username,
+  const std::string &password, const int64_t user_id,
+  const std::string &x_request_id) {
   // Tracing disabled
   // TextMapReader reader(carrier);
-  std::map<std::string, std::string> writer_text_map;
+  // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(
@@ -199,9 +200,11 @@ void UserHandler::RegisterUserWithId(
       throw std::runtime_error("Failed to connect to social-graph-service");
     }
     try {
-      json req_j = {{"req_id", req_id}, {"user_id", user_id},
-                    {"carrier", writer_text_map}};
-      auto res = social_graph_client->PostJson("/InsertUser", req_j);
+      json req_j = {{"req_id", req_id}, {"user_id", user_id}};
+      auto res = social_graph_client->PostJson(
+        "/InsertUser",
+        req_j,
+  BuildRequestIdHeader(x_request_id));
       (void)res;
     } catch (...) {
       _social_graph_client_pool->Remove(social_graph_client);
@@ -215,13 +218,13 @@ void UserHandler::RegisterUserWithId(
 }
 
 void UserHandler::RegisterUser(
-    const int64_t req_id, const std::string &first_name,
-    const std::string &last_name, const std::string &username,
-    const std::string &password,
-    const std::map<std::string, std::string> &carrier) {
+  const int64_t req_id, const std::string &first_name,
+  const std::string &last_name, const std::string &username,
+  const std::string &password,
+  const std::string &x_request_id) {
   // Tracing disabled
   // TextMapReader reader(carrier);
-  std::map<std::string, std::string> writer_text_map;
+  // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(
@@ -333,9 +336,12 @@ void UserHandler::RegisterUser(
       throw std::runtime_error("Failed to connect to social-graph-service");
     }
     try {
-      json req_j = {{"req_id", req_id}, {"user_id", user_id},
-                    {"carrier", writer_text_map}};
-      auto res = social_graph_client->PostJson("/InsertUser", req_j);
+      json req_j = {{"req_id", req_id}, {"user_id", user_id}};
+                    // {"carrier", writer_text_map}};
+      auto res = social_graph_client->PostJson(
+        "/InsertUser",
+        req_j,
+  BuildRequestIdHeader(x_request_id));
       (void)res;
     } catch (...) {
       _social_graph_client_pool->Remove(social_graph_client);
@@ -350,11 +356,11 @@ void UserHandler::RegisterUser(
 }
 
 void UserHandler::ComposeCreatorWithUsername(
-    Creator &_return, const int64_t req_id, const std::string &username,
-    const std::map<std::string, std::string> &carrier) {
+  Creator &_return, const int64_t req_id, const std::string &username,
+  const std::string &x_request_id) {
   // Tracing disabled
   // TextMapReader reader(carrier);
-  // std::map<std::string, std::string> writer_text_map;
+  // // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(
@@ -494,12 +500,12 @@ void UserHandler::ComposeCreatorWithUsername(
 }
 
 void UserHandler::ComposeCreatorWithUserId(
-    Creator &_return, int64_t req_id, int64_t user_id,
-    const std::string &username,
-    const std::map<std::string, std::string> &carrier) {
+  Creator &_return, int64_t req_id, int64_t user_id,
+  const std::string &username,
+  const std::string &x_request_id) {
   // Tracing disabled
   // TextMapReader reader(carrier);
-  // std::map<std::string, std::string> writer_text_map;
+  // // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(
@@ -518,10 +524,10 @@ void UserHandler::ComposeCreatorWithUserId(
 void UserHandler::Login(std::string &_return, int64_t req_id,
                         const std::string &username,
                         const std::string &password,
-                        const std::map<std::string, std::string> &carrier) {
+                        const std::string &x_request_id) {
   // Tracing disabled
   // TextMapReader reader(carrier);
-  // std::map<std::string, std::string> writer_text_map;
+  // // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(
@@ -688,11 +694,11 @@ void UserHandler::Login(std::string &_return, int64_t req_id,
   // span->Finish();
 }
 int64_t UserHandler::GetUserId(
-    int64_t req_id, const std::string &username,
-    const std::map<std::string, std::string> &carrier) {
+  int64_t req_id, const std::string &username,
+  const std::string &x_request_id) {
   // Tracing disabled
   // TextMapReader reader(carrier);
-  // std::map<std::string, std::string> writer_text_map;
+  // // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(

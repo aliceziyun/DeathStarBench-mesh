@@ -7,6 +7,7 @@
 #include "../tracing.h"
 #include "../HttpClientWrapper.h"  // brings in httplib
 #include "MediaHandler.h"
+#include "../RequestHeaderHelper.h"
 
 using namespace social_network;
 using json = nlohmann::json;
@@ -33,10 +34,10 @@ int main(int argc, char *argv[]) {
       int64_t req_id = j["req_id"];
       auto media_types = j["media_types"].get<std::vector<std::string>>();
       auto media_ids = j["media_ids"].get<std::vector<int64_t>>();
-      std::map<std::string, std::string> carrier = j["carrier"];
+  std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
 
       std::vector<Media> media;
-      handler.ComposeMedia(media, req_id, media_types, media_ids, carrier);
+  handler.ComposeMedia(media, req_id, media_types, media_ids, x_request_id);
 
       json out;
       out["media"] = json::array();

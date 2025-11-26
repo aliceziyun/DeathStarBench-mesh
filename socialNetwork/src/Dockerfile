@@ -11,4 +11,4 @@ COPY ./UrlShortenService/build/UrlShortenService /usr/local/bin/UrlShortenServic
 COPY ./UserMentionService/build/UserMentionService /usr/local/bin/UserMentionService
 COPY ./UserService/build/UserService /usr/local/bin/UserService
 COPY ./UserTimelineService/build/UserTimelineService /usr/local/bin/UserTimelineService
-COPY ./WriteHomeTimelineService/build/WriteHomeTimelineService /usr/local/bin/WriteHomeTimelineService
+# COPY ./WriteHomeTimelineService/build/WriteHomeTimelineService /usr/local/bin/WriteHomeTimelineService

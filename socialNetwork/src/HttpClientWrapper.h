@@ -2,6 +2,8 @@
 #define SOCIALNETWORK_SRC_HTTPCLIENTWRAPPER_H_
 
 #include <string>
+#include <map>
+#include <nlohmann/json.hpp>
 #include "httplib.h"
 
 class HttpClientWrapper {
@@ -27,6 +29,27 @@ public:
         auto res = cli.Post(path.c_str(),
                             body.dump(),
                             "application/json");
+
+        if (!res) {
+            throw std::runtime_error("HTTP request failed: " + path);
+        }
+        if (res->status >= 400) {
+            throw std::runtime_error("HTTP " + std::to_string(res->status) +
+                                     " on " + path);
+        }
+
+        return nlohmann::json::parse(res->body);
+    }
+
+    // Overload supporting custom request headers (e.g., x-request-id)
+    nlohmann::json PostJson(const std::string& path,
+                            const nlohmann::json& body,
+                            const std::map<std::string, std::string>& headers) {
+        httplib::Headers h;
+        for (const auto &kv : headers) {
+            h.emplace(kv.first, kv.second);
+        }
+        auto res = cli.Post(path.c_str(), h, body.dump(), "application/json");
 
         if (!res) {
             throw std::runtime_error("HTTP request failed: " + path);

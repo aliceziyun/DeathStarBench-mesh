@@ -9,6 +9,7 @@
 #include "../tracing.h"
 #include "../HttpClientWrapper.h"  // brings in httplib Server
 #include "PostStorageHandler.h"
+#include "../RequestHeaderHelper.h"
 
 using namespace social_network;
 using json = nlohmann::json;
@@ -75,7 +76,7 @@ int main(int argc, char* argv[]) {
     try {
       auto j = json::parse(req.body);
       int64_t req_id = j["req_id"];
-      std::map<std::string, std::string> carrier = j["carrier"];
+  std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
       const auto &pj = j["post"];
       Post post;
       post.post_id = pj["post_id"];
@@ -103,7 +104,7 @@ int main(int argc, char* argv[]) {
         url.expanded_url = u["expanded_url"];
         post.urls.emplace_back(url);
       }
-      handler.StorePost(req_id, post, carrier);
+  handler.StorePost(req_id, post, x_request_id);
       res.set_content("{\"status\":\"ok\"}", "application/json");
     } catch (std::exception &e) {
       res.status = 500;
@@ -117,9 +118,9 @@ int main(int argc, char* argv[]) {
       auto j = json::parse(req.body);
       int64_t req_id = j["req_id"];
       int64_t post_id = j["post_id"];
-      std::map<std::string, std::string> carrier = j["carrier"];
+  std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
       Post p;
-      handler.ReadPost(p, req_id, post_id, carrier);
+  handler.ReadPost(p, req_id, post_id, x_request_id);
       json out = {
           {"post_id", p.post_id},
           {"timestamp", p.timestamp},
@@ -152,9 +153,9 @@ int main(int argc, char* argv[]) {
       auto j = json::parse(req.body);
       int64_t req_id = j["req_id"];
       auto post_ids = j["post_ids"].get<std::vector<int64_t>>();
-      std::map<std::string, std::string> carrier = j["carrier"];
+  std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
       std::vector<Post> posts;
-      handler.ReadPosts(posts, req_id, post_ids, carrier);
+  handler.ReadPosts(posts, req_id, post_ids, x_request_id);
       json out;
       out["posts"] = json::array();
       for (auto &p : posts) {

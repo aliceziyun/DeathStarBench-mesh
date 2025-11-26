@@ -20,7 +20,7 @@ class UserMentionHandler {
 
   void ComposeUserMentions(std::vector<UserMention> &_return, int64_t,
                            const std::vector<std::string> &,
-                           const std::map<std::string, std::string> &);
+                           const std::string &);
 
  private:
   memcached_pool_st *_memcached_client_pool;
@@ -35,12 +35,12 @@ UserMentionHandler::UserMentionHandler(
 }
 
 void UserMentionHandler::ComposeUserMentions(
-    std::vector<UserMention> &_return, int64_t req_id,
-    const std::vector<std::string> &usernames,
-    const std::map<std::string, std::string> &carrier) {
+  std::vector<UserMention> &_return, int64_t req_id,
+  const std::vector<std::string> &usernames,
+  const std::string &x_request_id) {
   // Initialize a span
   // TextMapReader reader(carrier);
-  // std::map<std::string, std::string> writer_text_map;
+  // // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(

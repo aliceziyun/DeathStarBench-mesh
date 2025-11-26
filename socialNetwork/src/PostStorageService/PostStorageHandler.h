@@ -24,14 +24,14 @@ class PostStorageHandler {
   ~PostStorageHandler() = default;
 
   void StorePost(int64_t req_id, const Post &post,
-                 const std::map<std::string, std::string> &carrier);
+                 const std::string &x_request_id);
 
   void ReadPost(Post &_return, int64_t req_id, int64_t post_id,
-                const std::map<std::string, std::string> &carrier);
+                const std::string &x_request_id);
 
   void ReadPosts(std::vector<Post> &_return, int64_t req_id,
                  const std::vector<int64_t> &post_ids,
-                 const std::map<std::string, std::string> &carrier);
+                 const std::string &x_request_id);
 
  private:
   memcached_pool_st *_memcached_client_pool;
@@ -46,11 +46,11 @@ PostStorageHandler::PostStorageHandler(
 }
 
 void PostStorageHandler::StorePost(
-    int64_t req_id, const social_network::Post &post,
-    const std::map<std::string, std::string> &carrier) {
+  int64_t req_id, const social_network::Post &post,
+  const std::string &x_request_id) {
   // Tracing disabled
   // TextMapReader reader(carrier);
-  // std::map<std::string, std::string> writer_text_map;
+  // // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(
@@ -155,11 +155,11 @@ void PostStorageHandler::StorePost(
 }
 
 void PostStorageHandler::ReadPost(
-    Post &_return, int64_t req_id, int64_t post_id,
-    const std::map<std::string, std::string> &carrier) {
+  Post &_return, int64_t req_id, int64_t post_id,
+  const std::string &x_request_id) {
   // Tracing disabled
   // TextMapReader reader(carrier);
-  // std::map<std::string, std::string> writer_text_map;
+  // // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(
@@ -328,12 +328,12 @@ void PostStorageHandler::ReadPost(
   // span->Finish();
 }
 void PostStorageHandler::ReadPosts(
-    std::vector<Post> &_return, int64_t req_id,
-    const std::vector<int64_t> &post_ids,
-    const std::map<std::string, std::string> &carrier) {
+  std::vector<Post> &_return, int64_t req_id,
+  const std::vector<int64_t> &post_ids,
+  const std::string &x_request_id) {
   // Tracing disabled
   // TextMapReader reader(carrier);
-  // std::map<std::string, std::string> writer_text_map;
+  // // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(

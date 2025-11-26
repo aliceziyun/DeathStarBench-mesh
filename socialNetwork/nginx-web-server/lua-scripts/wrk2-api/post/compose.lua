@@ -15,27 +15,13 @@ function _M.ComposePost()
 
   local tcp = ngx.socket.tcp
 
-  -- local req_id = tonumber(string.sub(ngx.var.request_id, 0, 15), 16)
-  local req_id = 123
-  -- local tracer = bridge_tracer.new_from_global()
-  -- local parent_span_context = tracer:binary_extract(ngx.var.opentracing_binary_context)
+  local req_id = tonumber(string.sub(ngx.var.request_id, 0, 15), 16)
+  local tracer = bridge_tracer.new_from_global()
+  local parent_span_context = tracer:binary_extract(ngx.var.opentracing_binary_context)
 
-  -- Read and parse JSON body instead of form args
+
   ngx.req.read_body()
-  local raw = ngx.req.get_body_data()
-  if not raw or raw == '' then
-    ngx.status = ngx.HTTP_BAD_REQUEST
-    ngx.say("Empty body")
-    ngx.log(ngx.ERR, "Empty body")
-    ngx.exit(ngx.status)
-  end
-  local ok_json, post = pcall(cjson.decode, raw)
-  if (not ok_json) or type(post) ~= 'table' then
-    ngx.status = ngx.HTTP_BAD_REQUEST
-    ngx.say("Invalid JSON body")
-    ngx.log(ngx.ERR, "Invalid JSON body: ", raw)
-    ngx.exit(ngx.status)
-  end
+  local post = ngx.req.get_post_args()
 
   if (_StrIsEmpty(post.user_id) or _StrIsEmpty(post.username) or
       _StrIsEmpty(post.post_type) or _StrIsEmpty(post.text)) then
@@ -46,22 +32,22 @@ function _M.ComposePost()
   end
 
   -- prepare tracing span and carrier
-  -- local span = tracer:start_span("compose_post_client",
-  --     { ["references"] = { { "child_of", parent_span_context } } })
+  local span = tracer:start_span("compose_post_client",
+      { ["references"] = { { "child_of", parent_span_context } } })
   local carrier = {}
-  -- tracer:text_map_inject(span:context(), carrier)
+  tracer:text_map_inject(span:context(), carrier)
 
   -- build request body
-  -- Extract arrays directly from JSON (already decoded)
-  local media_ids = (type(post.media_ids) == 'table') and post.media_ids or {}
-  local media_types = (type(post.media_types) == 'table') and post.media_types or {}
-
-  -- ngx.log(ngx.ERR, "Composing post for user_id: ", post.user_id,
-  --     ", username: ", post.username,
-  --     ", text length: ", tostring(#post.text),
-  --     ", media_ids count: ", tostring(#media_ids),
-  --     ", media_types count: ", tostring(#media_types),
-  --     ", post_type: ", post.post_type)
+  local media_ids = {}
+  local media_types = {}
+  if (not _StrIsEmpty(post.media_ids)) then
+    local ok_decode, decoded = pcall(cjson.decode, post.media_ids)
+    if ok_decode and type(decoded) == "table" then media_ids = decoded end
+  end
+  if (not _StrIsEmpty(post.media_types)) then
+    local ok_decode, decoded = pcall(cjson.decode, post.media_types)
+    if ok_decode and type(decoded) == "table" then media_types = decoded end
+  end
 
   local body_tbl = {
     req_id = req_id,
@@ -88,13 +74,14 @@ function _M.ComposePost()
     ngx.status = ngx.HTTP_SERVICE_UNAVAILABLE
     ngx.say("compose_post connect failure: " .. (err or "unknown"))
     ngx.log(ngx.ERR, "compose_post connect failure: ", err)
-    -- span:finish()
+    span:finish()
     ngx.exit(ngx.status)
   end
 
   local req = "POST " .. path .. " HTTP/1.1\r\n"
     .. "Host: " .. host .. ":" .. port .. "\r\n"
     .. "Content-Type: application/json\r\n"
+    .. "x-request-id: " .. tostring(req_id) .. "\r\n"
     .. "Content-Length: " .. #payload .. "\r\n"
     .. "Connection: close\r\n\r\n"
     .. payload
@@ -105,7 +92,7 @@ function _M.ComposePost()
     ngx.say("compose_post send failure: " .. (send_err or "unknown"))
     ngx.log(ngx.ERR, "compose_post send failure: ", send_err)
     sock:close()
-    -- span:finish()
+    span:finish()
     ngx.exit(ngx.status)
   end
 
@@ -116,7 +103,7 @@ function _M.ComposePost()
     ngx.say("compose_post read failure: " .. (rerr or "unknown"))
     ngx.log(ngx.ERR, "compose_post read failure: ", rerr)
     sock:close()
-    -- span:finish()
+    span:finish()
     ngx.exit(ngx.status)
   end
 
@@ -137,13 +124,13 @@ function _M.ComposePost()
     local msg = body ~= "" and body or ("compose_post HTTP " .. tostring(status_code))
     ngx.say(msg)
     ngx.log(ngx.ERR, "compose_post non-200: ", status_code, ", body: ", body)
-    -- span:finish()
+    span:finish()
     ngx.exit(ngx.status)
   end
 
   ngx.status = ngx.HTTP_OK
   ngx.say("Successfully upload post")
-  -- span:finish()
+  span:finish()
   ngx.exit(ngx.status)
 end
 

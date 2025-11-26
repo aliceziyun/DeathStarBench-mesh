@@ -20,6 +20,7 @@
 #include "../tracing.h"
 #include "../HttpClientWrapper.h"  // for httplib server
 #include "UniqueIdHandler.h"
+#include "../RequestHeaderHelper.h"
 
 using json = nlohmann::json;
 using namespace social_network;
@@ -55,10 +56,9 @@ int main(int argc, char *argv[]) {
       int64_t req_id = j["req_id"].get<int64_t>();
       int post_type = 0;
       if (j.contains("post_type")) post_type = j["post_type"].get<int>();
-      std::map<std::string, std::string> carrier;
-      if (j.contains("carrier")) carrier = j["carrier"].get<std::map<std::string, std::string>>();
+  std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
 
-      auto unique_id = handler.ComposeUniqueId(req_id, post_type, carrier);
+  auto unique_id = handler.ComposeUniqueId(req_id, post_type, x_request_id);
       res.set_content(json({{"unique_id", unique_id}}).dump(), "application/json");
     } catch (const std::exception &e) {
       res.status = 500;

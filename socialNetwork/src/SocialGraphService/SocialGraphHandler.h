@@ -15,6 +15,7 @@
 #include "../ClientPool.h"
 #include "../HttpClientWrapper.h"
 #include "../logger.h"
+#include "../RequestHeaderHelper.h"
 // #include "../tracing.h"  // Tracing disabled
 #include "../social_network_types.h"
 
@@ -37,20 +38,20 @@ class SocialGraphHandler {
   ~SocialGraphHandler() = default;
   bool IsRedisReplicationEnabled();
   void GetFollowers(std::vector<int64_t> &, int64_t, int64_t,
-          const std::map<std::string, std::string> &);
+    const std::string &);
   void GetFollowees(std::vector<int64_t> &, int64_t, int64_t,
-          const std::map<std::string, std::string> &);
+    const std::string &);
   void Follow(int64_t, int64_t, int64_t,
-        const std::map<std::string, std::string> &);
+  const std::string &);
   void Unfollow(int64_t, int64_t, int64_t,
-        const std::map<std::string, std::string> &);
+  const std::string &);
   void FollowWithUsername(int64_t, const std::string &, const std::string &,
-              const std::map<std::string, std::string> &);
+        const std::string &);
   void UnfollowWithUsername(
     int64_t, const std::string &, const std::string &,
-    const std::map<std::string, std::string> &);
+    const std::string &);
   void InsertUser(int64_t, int64_t,
-          const std::map<std::string, std::string> &);
+    const std::string &);
 
  private:
   mongoc_client_pool_t *_mongodb_client_pool;
@@ -100,11 +101,11 @@ bool SocialGraphHandler::IsRedisReplicationEnabled() {
 }
 
 void SocialGraphHandler::Follow(
-    int64_t req_id, int64_t user_id, int64_t followee_id,
-    const std::map<std::string, std::string> &carrier) {
+  int64_t req_id, int64_t user_id, int64_t followee_id,
+  const std::string &x_request_id) {
   // Tracing disabled
   // TextMapReader reader(carrier);
-  // std::map<std::string, std::string> writer_text_map;
+  // // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(
@@ -289,11 +290,11 @@ void SocialGraphHandler::Follow(
 }
 
 void SocialGraphHandler::Unfollow(
-    int64_t req_id, int64_t user_id, int64_t followee_id,
-    const std::map<std::string, std::string> &carrier) {
+  int64_t req_id, int64_t user_id, int64_t followee_id,
+  const std::string &x_request_id) {
   // Tracing disabled
   // TextMapReader reader(carrier);
-  // std::map<std::string, std::string> writer_text_map;
+  // // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(
@@ -461,11 +462,11 @@ void SocialGraphHandler::Unfollow(
 }
 
 void SocialGraphHandler::GetFollowers(
-    std::vector<int64_t> &_return, const int64_t req_id, const int64_t user_id,
-    const std::map<std::string, std::string> &carrier) {
+  std::vector<int64_t> &_return, const int64_t req_id, const int64_t user_id,
+  const std::string &x_request_id) {
   // Tracing disabled
   // TextMapReader reader(carrier);
-  // std::map<std::string, std::string> writer_text_map;
+  // // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(
@@ -596,11 +597,11 @@ void SocialGraphHandler::GetFollowers(
 }
 
 void SocialGraphHandler::GetFollowees(
-    std::vector<int64_t> &_return, const int64_t req_id, const int64_t user_id,
-    const std::map<std::string, std::string> &carrier) {
+  std::vector<int64_t> &_return, const int64_t req_id, const int64_t user_id,
+  const std::string &x_request_id) {
   // Tracing disabled
   // TextMapReader reader(carrier);
-  // std::map<std::string, std::string> writer_text_map;
+  // // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(
@@ -736,11 +737,11 @@ void SocialGraphHandler::GetFollowees(
 }
 
 void SocialGraphHandler::InsertUser(
-    int64_t req_id, int64_t user_id,
-    const std::map<std::string, std::string> &carrier) {
+  int64_t req_id, int64_t user_id,
+  const std::string &x_request_id) {
   // Tracing disabled
   // TextMapReader reader(carrier);
-  // std::map<std::string, std::string> writer_text_map;
+  // // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(
@@ -786,12 +787,12 @@ void SocialGraphHandler::InsertUser(
 }
 
 void SocialGraphHandler::FollowWithUsername(
-    int64_t req_id, const std::string &user_name,
-    const std::string &followee_name,
-    const std::map<std::string, std::string> &carrier) {
+  int64_t req_id, const std::string &user_name,
+  const std::string &followee_name,
+  const std::string &x_request_id) {
   // Tracing disabled
   // TextMapReader reader(carrier);
-  std::map<std::string, std::string> writer_text_map; // keep empty carrier
+  // std::map<std::string, std::string> writer_text_map; // keep empty carrier
   // TextMapWriter writer(writer_text_map);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(
@@ -810,9 +811,12 @@ void SocialGraphHandler::FollowWithUsername(
       json req_jso = {
           {"req_id", req_id},
           {"user_name", user_name},
-          {"carrier", writer_text_map},
+          // {"carrier", writer_text_map},
       };
-      auto res = user_client->PostJson("/GetUserId", req_jso);
+      auto res = user_client->PostJson(
+        "/GetUserId",
+        req_jso,
+        BuildRequestIdHeader(x_request_id));
       _return = res["user_id"].get<int64_t>();
     } catch (...) {
       _user_service_client_pool->Remove(user_client);
@@ -835,9 +839,12 @@ void SocialGraphHandler::FollowWithUsername(
           json req_jso = {
               {"req_id", req_id},
               {"user_name", followee_name},
-              {"carrier", writer_text_map},
+              // {"carrier", writer_text_map},
           };
-          auto res = user_client->PostJson("/GetUserId", req_jso);
+          auto res = user_client->PostJson(
+            "/GetUserId",
+            req_jso,
+            BuildRequestIdHeader(x_request_id));
           _return = res["user_id"].get<int64_t>();
         } catch (...) {
           _user_service_client_pool->Remove(user_client);
@@ -859,18 +866,18 @@ void SocialGraphHandler::FollowWithUsername(
   }
 
   if (user_id >= 0 && followee_id >= 0) {
-    Follow(req_id, user_id, followee_id, writer_text_map);
+  Follow(req_id, user_id, followee_id, x_request_id);
   }
   // span->Finish();
 }
 
 void SocialGraphHandler::UnfollowWithUsername(
-    int64_t req_id, const std::string &user_name,
-    const std::string &followee_name,
-    const std::map<std::string, std::string> &carrier) {
+  int64_t req_id, const std::string &user_name,
+  const std::string &followee_name,
+  const std::string &x_request_id) {
   // Tracing disabled
   // TextMapReader reader(carrier);
-  std::map<std::string, std::string> writer_text_map; // keep empty carrier
+  // std::map<std::string, std::string> writer_text_map; // keep empty carrier
   // TextMapWriter writer(writer_text_map);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(
@@ -889,9 +896,12 @@ void SocialGraphHandler::UnfollowWithUsername(
       json req_jso = {
           {"req_id", req_id},
           {"user_name", user_name},
-          {"carrier", writer_text_map},
+          // {"carrier", writer_text_map},
       };
-      auto res = user_client->PostJson("/GetUserId", req_jso);
+      auto res = user_client->PostJson(
+        "/GetUserId",
+        req_jso,
+        BuildRequestIdHeader(x_request_id));
       _return = res["user_id"].get<int64_t>();
     } catch (...) {
       _user_service_client_pool->Remove(user_client);
@@ -914,9 +924,12 @@ void SocialGraphHandler::UnfollowWithUsername(
           json req_jso = {
               {"req_id", req_id},
               {"user_name", user_name},
-              {"carrier", writer_text_map},
+              // {"carrier", writer_text_map},
           };
-          auto res = user_client->PostJson("/GetUserId", req_jso);
+          auto res = user_client->PostJson(
+            "/GetUserId",
+            req_jso,
+            BuildRequestIdHeader(x_request_id));
           _return = res["user_id"].get<int64_t>();
         } catch (...) {
           _user_service_client_pool->Remove(user_client);
@@ -938,7 +951,7 @@ void SocialGraphHandler::UnfollowWithUsername(
 
   if (user_id >= 0 && followee_id >= 0) {
     try {
-      Unfollow(req_id, user_id, followee_id, writer_text_map);
+      Unfollow(req_id, user_id, followee_id, x_request_id);
     } catch (...) {
       throw;
     }

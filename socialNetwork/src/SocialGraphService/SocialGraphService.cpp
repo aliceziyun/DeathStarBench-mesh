@@ -10,6 +10,7 @@
 #include "../tracing.h"
 #include "../ClientPool.h"
 #include "SocialGraphHandler.h"
+#include "../RequestHeaderHelper.h"
 
 using json = nlohmann::json;
 using namespace social_network;
@@ -108,9 +109,9 @@ int main(int argc, char *argv[]) {
         auto j = json::parse(req.body);
         int64_t req_id = j["req_id"];
         int64_t user_id = j["user_id"];
-        std::map<std::string, std::string> carrier = j["carrier"];
+        std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
         std::vector<int64_t> followers_id;
-        handler.GetFollowers(followers_id, req_id, user_id, carrier);
+        handler.GetFollowers(followers_id, req_id, user_id, x_request_id);
         res.set_content(json({{"followers_id", followers_id}}).dump(), "application/json");
       } catch (std::exception &e) {
         res.status = 500;
@@ -123,9 +124,9 @@ int main(int argc, char *argv[]) {
         auto j = json::parse(req.body);
         int64_t req_id = j["req_id"];
         int64_t user_id = j["user_id"];
-        std::map<std::string, std::string> carrier = j["carrier"];
+        std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
         std::vector<int64_t> followees_id;
-        handler.GetFollowees(followees_id, req_id, user_id, carrier);
+        handler.GetFollowees(followees_id, req_id, user_id, x_request_id);
         res.set_content(json({{"followees_id", followees_id}}).dump(), "application/json");
       } catch (std::exception &e) {
         res.status = 500;
@@ -139,8 +140,8 @@ int main(int argc, char *argv[]) {
         int64_t req_id = j["req_id"];
         int64_t user_id = j["user_id"];
         int64_t followee_id = j["followee_id"];
-        std::map<std::string, std::string> carrier = j["carrier"];
-        handler.Follow(req_id, user_id, followee_id, carrier);
+        std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
+        handler.Follow(req_id, user_id, followee_id, x_request_id);
         res.set_content("{\"status\":\"ok\"}", "application/json");
       } catch (std::exception &e) {
         res.status = 500;
@@ -154,8 +155,8 @@ int main(int argc, char *argv[]) {
         int64_t req_id = j["req_id"];
         int64_t user_id = j["user_id"];
         int64_t followee_id = j["followee_id"];
-        std::map<std::string, std::string> carrier = j["carrier"];
-        handler.Unfollow(req_id, user_id, followee_id, carrier);
+        std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
+        handler.Unfollow(req_id, user_id, followee_id, x_request_id);
         res.set_content("{\"status\":\"ok\"}", "application/json");
       } catch (std::exception &e) {
         res.status = 500;
@@ -169,8 +170,8 @@ int main(int argc, char *argv[]) {
         int64_t req_id = j["req_id"];
         std::string user_name = j["user_name"];
         std::string followee_name = j["followee_name"];
-        std::map<std::string, std::string> carrier = j["carrier"];
-        handler.FollowWithUsername(req_id, user_name, followee_name, carrier);
+        std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
+        handler.FollowWithUsername(req_id, user_name, followee_name, x_request_id);
         res.set_content("{\"status\":\"ok\"}", "application/json");
       } catch (std::exception &e) {
         res.status = 500;
@@ -184,8 +185,8 @@ int main(int argc, char *argv[]) {
         int64_t req_id = j["req_id"];
         std::string user_name = j["user_name"];
         std::string followee_name = j["followee_name"];
-        std::map<std::string, std::string> carrier = j["carrier"];
-        handler.UnfollowWithUsername(req_id, user_name, followee_name, carrier);
+        std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
+        handler.UnfollowWithUsername(req_id, user_name, followee_name, x_request_id);
         res.set_content("{\"status\":\"ok\"}", "application/json");
       } catch (std::exception &e) {
         res.status = 500;
@@ -198,8 +199,8 @@ int main(int argc, char *argv[]) {
         auto j = json::parse(req.body);
         int64_t req_id = j["req_id"];
         int64_t user_id = j["user_id"];
-        std::map<std::string, std::string> carrier = j["carrier"];
-        handler.InsertUser(req_id, user_id, carrier);
+        std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
+        handler.InsertUser(req_id, user_id, x_request_id);
         res.set_content("{\"status\":\"ok\"}", "application/json");
       } catch (std::exception &e) {
         res.status = 500;
@@ -221,9 +222,9 @@ int main(int argc, char *argv[]) {
         auto j = json::parse(req.body);
         int64_t req_id = j["req_id"];
         int64_t user_id = j["user_id"];
-        std::map<std::string, std::string> carrier = j["carrier"];
+        std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
         std::vector<int64_t> followers_id;
-        handler.GetFollowers(followers_id, req_id, user_id, carrier);
+        handler.GetFollowers(followers_id, req_id, user_id, x_request_id);
         res.set_content(json({{"followers_id", followers_id}}).dump(), "application/json");
       } catch (std::exception &e) {
         res.status = 500;
@@ -236,9 +237,9 @@ int main(int argc, char *argv[]) {
         auto j = json::parse(req.body);
         int64_t req_id = j["req_id"];
         int64_t user_id = j["user_id"];
-        std::map<std::string, std::string> carrier = j["carrier"];
+        std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
         std::vector<int64_t> followees_id;
-        handler.GetFollowees(followees_id, req_id, user_id, carrier);
+        handler.GetFollowees(followees_id, req_id, user_id, x_request_id);
         res.set_content(json({{"followees_id", followees_id}}).dump(), "application/json");
       } catch (std::exception &e) {
         res.status = 500;
@@ -252,8 +253,8 @@ int main(int argc, char *argv[]) {
         int64_t req_id = j["req_id"];
         int64_t user_id = j["user_id"];
         int64_t followee_id = j["followee_id"];
-        std::map<std::string, std::string> carrier = j["carrier"];
-        handler.Follow(req_id, user_id, followee_id, carrier);
+        std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
+        handler.Follow(req_id, user_id, followee_id, x_request_id);
         res.set_content("{\"status\":\"ok\"}", "application/json");
       } catch (std::exception &e) {
         res.status = 500;
@@ -267,8 +268,8 @@ int main(int argc, char *argv[]) {
         int64_t req_id = j["req_id"];
         int64_t user_id = j["user_id"];
         int64_t followee_id = j["followee_id"];
-        std::map<std::string, std::string> carrier = j["carrier"];
-        handler.Unfollow(req_id, user_id, followee_id, carrier);
+        std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
+        handler.Unfollow(req_id, user_id, followee_id, x_request_id);
         res.set_content("{\"status\":\"ok\"}", "application/json");
       } catch (std::exception &e) {
         res.status = 500;
@@ -282,8 +283,8 @@ int main(int argc, char *argv[]) {
         int64_t req_id = j["req_id"];
         std::string user_name = j["user_name"];
         std::string followee_name = j["followee_name"];
-        std::map<std::string, std::string> carrier = j["carrier"];
-        handler.FollowWithUsername(req_id, user_name, followee_name, carrier);
+        std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
+        handler.FollowWithUsername(req_id, user_name, followee_name, x_request_id);
         res.set_content("{\"status\":\"ok\"}", "application/json");
       } catch (std::exception &e) {
         res.status = 500;
@@ -297,8 +298,8 @@ int main(int argc, char *argv[]) {
         int64_t req_id = j["req_id"];
         std::string user_name = j["user_name"];
         std::string followee_name = j["followee_name"];
-        std::map<std::string, std::string> carrier = j["carrier"];
-        handler.UnfollowWithUsername(req_id, user_name, followee_name, carrier);
+        std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
+        handler.UnfollowWithUsername(req_id, user_name, followee_name, x_request_id);
         res.set_content("{\"status\":\"ok\"}", "application/json");
       } catch (std::exception &e) {
         res.status = 500;
@@ -311,8 +312,8 @@ int main(int argc, char *argv[]) {
         auto j = json::parse(req.body);
         int64_t req_id = j["req_id"];
         int64_t user_id = j["user_id"];
-        std::map<std::string, std::string> carrier = j["carrier"];
-        handler.InsertUser(req_id, user_id, carrier);
+        std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
+        handler.InsertUser(req_id, user_id, x_request_id);
         res.set_content("{\"status\":\"ok\"}", "application/json");
       } catch (std::exception &e) {
         res.status = 500;
@@ -331,9 +332,9 @@ int main(int argc, char *argv[]) {
         auto j = json::parse(req.body);
         int64_t req_id = j["req_id"];
         int64_t user_id = j["user_id"];
-        std::map<std::string, std::string> carrier = j["carrier"];
+        std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
         std::vector<int64_t> followers_id;
-        handler.GetFollowers(followers_id, req_id, user_id, carrier);
+        handler.GetFollowers(followers_id, req_id, user_id, x_request_id);
         res.set_content(json({{"followers_id", followers_id}}).dump(), "application/json");
       } catch (std::exception &e) {
         res.status = 500;
@@ -346,9 +347,9 @@ int main(int argc, char *argv[]) {
         auto j = json::parse(req.body);
         int64_t req_id = j["req_id"];
         int64_t user_id = j["user_id"];
-        std::map<std::string, std::string> carrier = j["carrier"];
+        std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
         std::vector<int64_t> followees_id;
-        handler.GetFollowees(followees_id, req_id, user_id, carrier);
+        handler.GetFollowees(followees_id, req_id, user_id, x_request_id);
         res.set_content(json({{"followees_id", followees_id}}).dump(), "application/json");
       } catch (std::exception &e) {
         res.status = 500;
@@ -362,8 +363,8 @@ int main(int argc, char *argv[]) {
         int64_t req_id = j["req_id"];
         int64_t user_id = j["user_id"];
         int64_t followee_id = j["followee_id"];
-        std::map<std::string, std::string> carrier = j["carrier"];
-        handler.Follow(req_id, user_id, followee_id, carrier);
+        std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
+        handler.Follow(req_id, user_id, followee_id, x_request_id);
         res.set_content("{\"status\":\"ok\"}", "application/json");
       } catch (std::exception &e) {
         res.status = 500;
@@ -377,8 +378,8 @@ int main(int argc, char *argv[]) {
         int64_t req_id = j["req_id"];
         int64_t user_id = j["user_id"];
         int64_t followee_id = j["followee_id"];
-        std::map<std::string, std::string> carrier = j["carrier"];
-        handler.Unfollow(req_id, user_id, followee_id, carrier);
+        std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
+        handler.Unfollow(req_id, user_id, followee_id, x_request_id);
         res.set_content("{\"status\":\"ok\"}", "application/json");
       } catch (std::exception &e) {
         res.status = 500;
@@ -392,8 +393,8 @@ int main(int argc, char *argv[]) {
         int64_t req_id = j["req_id"];
         std::string user_name = j["user_name"];
         std::string followee_name = j["followee_name"];
-        std::map<std::string, std::string> carrier = j["carrier"];
-        handler.FollowWithUsername(req_id, user_name, followee_name, carrier);
+        std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
+        handler.FollowWithUsername(req_id, user_name, followee_name, x_request_id);
         res.set_content("{\"status\":\"ok\"}", "application/json");
       } catch (std::exception &e) {
         res.status = 500;
@@ -407,8 +408,8 @@ int main(int argc, char *argv[]) {
         int64_t req_id = j["req_id"];
         std::string user_name = j["user_name"];
         std::string followee_name = j["followee_name"];
-        std::map<std::string, std::string> carrier = j["carrier"];
-        handler.UnfollowWithUsername(req_id, user_name, followee_name, carrier);
+        std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
+        handler.UnfollowWithUsername(req_id, user_name, followee_name, x_request_id);
         res.set_content("{\"status\":\"ok\"}", "application/json");
       } catch (std::exception &e) {
         res.status = 500;
@@ -421,8 +422,8 @@ int main(int argc, char *argv[]) {
         auto j = json::parse(req.body);
         int64_t req_id = j["req_id"];
         int64_t user_id = j["user_id"];
-        std::map<std::string, std::string> carrier = j["carrier"];
-        handler.InsertUser(req_id, user_id, carrier);
+        std::string x_request_id = GetXRequestIdFromHeaders(req.headers);
+        handler.InsertUser(req_id, user_id, x_request_id);
         res.set_content("{\"status\":\"ok\"}", "application/json");
       } catch (std::exception &e) {
         res.status = 500;

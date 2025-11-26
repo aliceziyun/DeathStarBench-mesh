@@ -44,7 +44,7 @@ class UniqueIdHandler {
 
   // HTTP version: post_type passed as integer (kept for API parity, not used).
   int64_t ComposeUniqueId(int64_t req_id, int post_type,
-                          const std::map<std::string, std::string> &carrier);
+                          const std::string &x_request_id);
 
  private:
   std::mutex *_thread_lock;
@@ -59,10 +59,10 @@ UniqueIdHandler::UniqueIdHandler(std::mutex *thread_lock,
 
 int64_t UniqueIdHandler::ComposeUniqueId(
   int64_t req_id, int /*post_type*/,
-  const std::map<std::string, std::string> &carrier) {
+  const std::string &x_request_id) {
   // Initialize a span
   // TextMapReader reader(carrier);
-  // std::map<std::string, std::string> writer_text_map;
+  // // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(

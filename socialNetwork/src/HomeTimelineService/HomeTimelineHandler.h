@@ -12,6 +12,7 @@
 #include "../HttpClientWrapper.h"
 #include "../logger.h"
 #include "../tracing.h"
+#include "../RequestHeaderHelper.h"
 #include "../social_network_types.h"
 
 using namespace sw::redis;
@@ -38,11 +39,11 @@ class HomeTimelineHandler {
   bool IsRedisReplicationEnabled();
 
   void ReadHomeTimeline(std::vector<Post> &, int64_t, int64_t, int, int,
-            const std::map<std::string, std::string> &);
+            const std::string &);
 
   void WriteHomeTimeline(int64_t, int64_t, int64_t, int64_t,
              const std::vector<int64_t> &,
-             const std::map<std::string, std::string> &);
+             const std::string &);
 
  private:
   Redis *_redis_replica_pool;
@@ -95,9 +96,9 @@ bool HomeTimelineHandler::IsRedisReplicationEnabled() {
 }
 
 void HomeTimelineHandler::WriteHomeTimeline(
-    int64_t req_id, int64_t post_id, int64_t user_id, int64_t timestamp,
-    const std::vector<int64_t> &user_mentions_id,
-    const std::map<std::string, std::string> &carrier) {
+  int64_t req_id, int64_t post_id, int64_t user_id, int64_t timestamp,
+  const std::vector<int64_t> &user_mentions_id,
+  const std::string &x_request_id) {
   // Initialize a span
   // TextMapReader reader(carrier);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
@@ -107,7 +108,7 @@ void HomeTimelineHandler::WriteHomeTimeline(
   // Find followers of the user
   // auto followers_span = opentracing::Tracer::Global()->StartSpan(
   //     "get_followers_client", {opentracing::ChildOf(&span->context())});
-  std::map<std::string, std::string> writer_text_map;
+  // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // opentracing::Tracer::Global()->Inject(followers_span->context(), writer);
 
@@ -121,9 +122,11 @@ void HomeTimelineHandler::WriteHomeTimeline(
   try {
     json req_json = {
         {"req_id", req_id},
-        {"user_id", user_id},
-        {"carrier", writer_text_map}};
-    auto res = social_graph_client->PostJson("/GetFollowers", req_json);
+        {"user_id", user_id}};
+    auto res = social_graph_client->PostJson(
+      "/GetFollowers",
+      req_json,
+      BuildRequestIdHeader(x_request_id));
     followers_id = res["followers_id"].get<std::vector<int64_t>>();
   } catch (...) {
     LOG(error) << "Failed to get followers from social-graph-service";
@@ -214,11 +217,11 @@ void HomeTimelineHandler::WriteHomeTimeline(
 
 
 void HomeTimelineHandler::ReadHomeTimeline(
-    std::vector<Post> &_return, int64_t req_id, int64_t user_id, int start_idx,
-    int stop_idx, const std::map<std::string, std::string> &carrier) {
+  std::vector<Post> &_return, int64_t req_id, int64_t user_id, int start_idx,
+  int stop_idx, const std::string &x_request_id) {
   // Initialize a span
   // TextMapReader reader(carrier);
-  std::map<std::string, std::string> writer_text_map;
+  // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(
@@ -271,8 +274,12 @@ void HomeTimelineHandler::ReadHomeTimeline(
     json req_json = {
         {"req_id", req_id},
         {"post_ids", post_ids},
-        {"carrier", writer_text_map}};
-    auto res = post_client->PostJson("/ReadPosts", req_json);
+        // {"carrier", writer_text_map}
+    };
+    auto res = post_client->PostJson(
+      "/ReadPosts",
+      req_json,
+      BuildRequestIdHeader(x_request_id));
     for (auto &item : res["posts"]) {
       Post p;
       p.req_id = item["req_id"];

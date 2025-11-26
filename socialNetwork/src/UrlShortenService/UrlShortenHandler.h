@@ -25,11 +25,11 @@ class UrlShortenHandler {
 
   void ComposeUrls(std::vector<Url> &, int64_t,
       const std::vector<std::string> &,
-    const std::map<std::string, std::string> &);
+    const std::string &);
 
   void GetExtendedUrls(std::vector<std::string> &, int64_t,
                        const std::vector<std::string> &,
-             const std::map<std::string, std::string> &);
+             const std::string &);
 
  private:
   memcached_pool_st *_memcached_client_pool;
@@ -65,14 +65,14 @@ std::string UrlShortenHandler::_GenRandomStr(int length) {
   return return_str;
 }
 void UrlShortenHandler::ComposeUrls(
-    std::vector<Url> &_return,
-    int64_t req_id,
-    const std::vector<std::string> &urls,
-    const std::map<std::string, std::string> &carrier) {
+  std::vector<Url> &_return,
+  int64_t req_id,
+  const std::vector<std::string> &urls,
+  const std::string &x_request_id) {
 
   // Initialize a span
   // TextMapReader reader(carrier);
-  // std::map<std::string, std::string> writer_text_map;
+  // // std::map<std::string, std::string> writer_text_map;
   // TextMapWriter writer(writer_text_map);
   // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
   // auto span = opentracing::Tracer::Global()->StartSpan(
@@ -159,10 +159,10 @@ void UrlShortenHandler::ComposeUrls(
 }
 
 void UrlShortenHandler::GetExtendedUrls(
-    std::vector<std::string> &_return,
-    int64_t req_id,
-    const std::vector<std::string> &shortened_id,
-    const std::map<std::string, std::string> &carrier) {
+  std::vector<std::string> &_return,
+  int64_t req_id,
+  const std::vector<std::string> &shortened_id,
+  const std::string &x_request_id) {
 
   // TODO: Implement GetExtendedUrls
 }
