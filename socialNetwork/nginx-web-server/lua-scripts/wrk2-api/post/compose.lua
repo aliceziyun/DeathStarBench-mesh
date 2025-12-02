@@ -23,6 +23,12 @@ function _M.ComposePost()
   ngx.req.read_body()
   local post = ngx.req.get_post_args()
 
+  ngx.log(ngx.ERR, "ComposePost request_id=", req_id,
+      ", user_id=", tostring(post.user_id),
+      ", username=", tostring(post.username),
+      ", post_type=", tostring(post.post_type),
+      ", text=", tostring(post.text))
+
   if (_StrIsEmpty(post.user_id) or _StrIsEmpty(post.username) or
       _StrIsEmpty(post.post_type) or _StrIsEmpty(post.text)) then
     ngx.status = ngx.HTTP_BAD_REQUEST
